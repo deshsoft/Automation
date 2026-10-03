@@ -60,7 +60,7 @@ class PrepareImportedVideo implements ShouldQueue
             'media_path' => $mediaPath,
             'media_type' => Post::MEDIA_VIDEO,
             'media_mime' => Storage::disk('public')->mimeType($mediaPath) ?: 'video/mp4',
-            'title' => $post->title ?: ($file['title'] ? Str::limit($file['title'], 100, '') : null),
+            'title' => $post->title ?: (blank($post->caption) ? $this->cleanTitle($file['title']) : null),
             'status' => $post->scheduled_at?->isFuture() ? PostStatus::Scheduled : PostStatus::Publishing,
         ]);
 
@@ -100,6 +100,20 @@ class PrepareImportedVideo implements ShouldQueue
         if ($post->status === PostStatus::Publishing) {
             app(PostDispatcher::class)->dispatch($post);
         }
+    }
+
+    /**
+     * Facebook titles start with counters such as "11 reactions | " or "2.3K views · ".
+     */
+    private function cleanTitle(?string $title): ?string
+    {
+        if (blank($title)) {
+            return null;
+        }
+
+        $title = preg_replace('/^(?:[\d.,]+\s*[KkMm]?\s+(?:reactions?|views?|comments?|shares?)\s*[|·]\s*)+/u', '', $title);
+
+        return Str::limit(trim((string) $title), 100, '') ?: null;
     }
 
     /**

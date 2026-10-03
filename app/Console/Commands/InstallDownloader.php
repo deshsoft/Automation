@@ -15,7 +15,7 @@ use ZipArchive;
  * Puts free standalone programs in storage/app/bin, so the downloader works
  * on cPanel where nothing can be installed system-wide.
  */
-#[Signature('downloads:install {--ffmpeg : Also install ffmpeg (needed for HD and MP3, Linux only)} {--deno : Also install Deno (YouTube needs it for all formats)}')]
+#[Signature('downloads:install {--ffmpeg : Also install ffmpeg (needed for HD and MP3, Linux only)} {--deno : Also install Deno (YouTube needs it for all formats)} {--without-ytdlp : Only install the extras, keep the current yt-dlp}')]
 #[Description('Download the latest yt-dlp (and optionally ffmpeg and Deno) into storage/app/bin')]
 class InstallDownloader extends Command
 {
@@ -38,12 +38,22 @@ class InstallDownloader extends Command
             return self::FAILURE;
         }
 
-        if (! $this->fetch("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{$ytDlp}", $directory.'/yt-dlp')) {
-            return self::FAILURE;
-        }
+        if (! $this->option('without-ytdlp')) {
+            if (! $this->fetch("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{$ytDlp}", $directory.'/yt-dlp')) {
+                return self::FAILURE;
+            }
 
-        chmod($directory.'/yt-dlp', 0755);
-        $this->info('yt-dlp '.trim(Process::run([$directory.'/yt-dlp', '--version'])->output()).' installed.');
+            chmod($directory.'/yt-dlp', 0755);
+            $check = Process::env(VideoDownloader::environment())->timeout(120)->run([$directory.'/yt-dlp', '--version']);
+
+            if ($check->failed() || trim($check->output()) === '') {
+                $this->error('yt-dlp was downloaded but does not run on this server: '.trim($check->errorOutput() ?: $check->output() ?: 'exit code '.$check->exitCode()));
+
+                return self::FAILURE;
+            }
+
+            $this->info('yt-dlp '.trim($check->output()).' installed.');
+        }
 
         if ($this->option('ffmpeg') && ! $this->installFfmpeg($directory, $linux, $arm)) {
             return self::FAILURE;
@@ -64,6 +74,12 @@ class InstallDownloader extends Command
             return true;
         }
 
+        // Many shared hosts have no "xz" program to unpack .tar.xz, so use a
+        // gzip-compressed build that PHP can unpack by itself.
+        if (Process::run(['sh', '-c', 'command -v xz'])->failed()) {
+            return $this->installGzippedFfmpeg($directory, $arm);
+        }
+
         $archive = $directory.'/ffmpeg.tar.xz';
         $url = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-'.($arm ? 'arm64' : 'amd64').'-static.tar.xz';
 
@@ -82,6 +98,40 @@ class InstallDownloader extends Command
 
         chmod($directory.'/ffmpeg', 0755);
         $this->info('ffmpeg installed.');
+
+        return true;
+    }
+
+    private function installGzippedFfmpeg(string $directory, bool $arm): bool
+    {
+        $archive = $directory.'/ffmpeg.gz';
+        $url = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-'.($arm ? 'arm64' : 'x64').'.gz';
+
+        if (! $this->fetch($url, $archive)) {
+            return false;
+        }
+
+        $source = gzopen($archive, 'rb');
+        $target = fopen($directory.'/ffmpeg', 'wb');
+
+        while (! gzeof($source)) {
+            fwrite($target, (string) gzread($source, 1024 * 1024));
+        }
+
+        gzclose($source);
+        fclose($target);
+        File::delete($archive);
+        chmod($directory.'/ffmpeg', 0755);
+
+        $check = Process::timeout(60)->run([$directory.'/ffmpeg', '-version']);
+
+        if ($check->failed()) {
+            $this->error('ffmpeg was downloaded but does not run on this server: '.trim($check->errorOutput() ?: 'exit code '.$check->exitCode()));
+
+            return false;
+        }
+
+        $this->info('ffmpeg installed ('.strtok($check->output(), "\n").').');
 
         return true;
     }

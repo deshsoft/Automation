@@ -4,8 +4,10 @@ namespace App\Services\Publishing;
 
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
+use App\Jobs\PrepareImportedVideo;
 use App\Jobs\PublishPostTarget;
 use App\Models\Post;
+use App\Models\VideoDownload;
 
 class PostDispatcher
 {
@@ -61,10 +63,21 @@ class PostDispatcher
             $target->update(['status' => TargetStatus::Pending, 'error' => null, 'state' => null]);
         }
 
-        if ($failedTargets->isNotEmpty()) {
-            $post->update(['status' => PostStatus::Publishing]);
-            $this->dispatch($post);
+        if ($failedTargets->isEmpty()) {
+            return 0;
         }
+
+        // The video from the link never arrived: download it again first.
+        if (filled($post->option('import_url')) && ! $post->hasMedia() && $post->videoDownload !== null) {
+            $post->videoDownload->update(['status' => VideoDownload::STATUS_QUEUED, 'error' => null]);
+            $post->update(['status' => PostStatus::Preparing]);
+            PrepareImportedVideo::dispatch($post);
+
+            return $failedTargets->count();
+        }
+
+        $post->update(['status' => PostStatus::Publishing]);
+        $this->dispatch($post);
 
         return $failedTargets->count();
     }

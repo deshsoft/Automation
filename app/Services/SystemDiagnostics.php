@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Downloading\VideoDownloader;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,8 @@ use Throwable;
  */
 class SystemDiagnostics
 {
+    public function __construct(private VideoDownloader $downloader) {}
+
     /**
      * The APIs this app must be able to reach.
      *
@@ -69,6 +72,10 @@ class SystemDiagnostics
             $this->check('Public storage link', File::exists(public_path('storage')), File::exists(public_path('storage')) ? 'exists' : 'missing, click "Create storage link" (photos and videos need it)'),
             $this->check('Cron job (scheduler)', $lastSchedulerRun !== null && now()->timestamp - $lastSchedulerRun <= 180, $lastSchedulerRun ? 'last run '.now()->createFromTimestamp($lastSchedulerRun)->diffForHumans() : 'never ran, add the cron job in cPanel'),
             $this->check('APP_URL', rtrim((string) config('app.url'), '/') === request()->getSchemeAndHttpHost(), 'is '.config('app.url').', this site is '.request()->getSchemeAndHttpHost()),
+            $this->check('Can run programs (proc_open)', $this->canRunPrograms(), $this->canRunPrograms() ? 'enabled' : 'disabled by the host: video downloads cannot work, ask hosting to enable proc_open'),
+            $this->check('Video downloader (yt-dlp)', $this->downloader->isInstalled(), $this->downloader->isInstalled() ? 'installed' : 'not installed, click "Install video downloader (1/3)"'),
+            $this->check('ffmpeg (HD videos)', $this->downloader->ffmpeg() !== null, $this->downloader->ffmpeg() !== null ? 'installed' : 'not installed, click "Install video downloader (2/3)"; without it downloads are often 360p'),
+            $this->check('Deno (YouTube)', $this->downloader->deno() !== null, $this->downloader->deno() !== null ? 'installed' : 'not installed, click "Install video downloader (3/3)"; YouTube may refuse downloads without it'),
             $this->check('Debug mode off', ! config('app.debug'), config('app.debug') ? 'APP_DEBUG=true, set it to false on a live server' : 'off'),
             $this->check('Upload limit', $this->uploadLimitMb() >= 100, 'upload_max_filesize '.ini_get('upload_max_filesize').', post_max_size '.ini_get('post_max_size').' (raise in cPanel → MultiPHP INI Editor for big videos)'),
         ];
@@ -126,6 +133,13 @@ class SystemDiagnostics
         } catch (Throwable $exception) {
             return ['ok' => false, 'detail' => mb_substr($exception->getMessage(), 0, 160)];
         }
+    }
+
+    private function canRunPrograms(): bool
+    {
+        $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+
+        return function_exists('proc_open') && ! in_array('proc_open', $disabled, true);
     }
 
     private function databaseWorks(): bool

@@ -81,10 +81,10 @@ class ImportVideoPostTest extends TestCase
     public function test_downloaded_video_becomes_the_post_media_and_is_published(): void
     {
         Queue::fake();
-        $post = $this->preparingPost();
+        $post = $this->preparingPost(['caption' => null]);
         Storage::disk('local')->put('downloads/'.$post->user_id.'/'.$post->video_download_id.'.mp4', 'video-bytes');
         $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('download')->once()->andReturn([
-            'title' => 'Mirpur speech full video',
+            'title' => '11 reactions | Mirpur speech full video',
             'thumbnail_url' => null,
             'duration' => 120,
             'file_path' => 'downloads/'.$post->user_id.'/'.$post->video_download_id.'.mp4',
@@ -266,5 +266,36 @@ class ImportVideoPostTest extends TestCase
         $this->assertSame(TargetStatus::Pending, $facebookTarget->fresh()->status);
         $this->assertSame(PostStatus::Publishing, $post->fresh()->status);
         Queue::assertPushed(PublishPostTarget::class, fn (PublishPostTarget $job) => $job->target->is($facebookTarget));
+    }
+
+    public function test_retry_downloads_the_video_again_when_it_never_arrived(): void
+    {
+        Queue::fake();
+        $post = $this->preparingPost(['status' => PostStatus::Failed]);
+        $post->targets()->update(['status' => TargetStatus::Failed, 'error' => 'yt-dlp is not installed']);
+        $post->videoDownload->update(['status' => VideoDownload::STATUS_FAILED]);
+
+        $this->actingAs($post->user)->post(route('posts.retry', $post))->assertSessionHas('success');
+
+        $this->assertSame(PostStatus::Preparing, $post->fresh()->status);
+        $this->assertSame(VideoDownload::STATUS_QUEUED, $post->videoDownload->fresh()->status);
+        $this->assertSame(TargetStatus::Pending, $post->targets()->sole()->status);
+        Queue::assertPushed(PrepareImportedVideo::class);
+        Queue::assertNotPushed(PublishPostTarget::class);
+    }
+
+    public function test_own_caption_is_kept_as_youtube_title_source(): void
+    {
+        Queue::fake();
+        $post = $this->preparingPost(['caption' => "My own title line\nMore text"]);
+        Storage::disk('local')->put('downloads/y.mp4', 'video-bytes');
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('download')->andReturn([
+            'title' => '11 reactions | Facebook title', 'thumbnail_url' => null, 'duration' => 10, 'file_path' => 'downloads/y.mp4', 'file_size' => 11,
+        ]));
+
+        (new PrepareImportedVideo($post))->handle(app(VideoDownloader::class), app(PostDispatcher::class));
+
+        $this->assertNull($post->fresh()->title);
+        $this->assertSame('My own title line', $post->fresh()->resolvedTitle());
     }
 }

@@ -35,10 +35,10 @@ class VideoDownloader
         $directory = 'downloads/'.$download->user_id;
         Storage::disk('local')->makeDirectory($directory);
 
-        $result = Process::timeout(self::TIMEOUT)->run($this->command($download, $directory));
+        $result = Process::timeout(self::TIMEOUT)->env(self::environment())->run($this->command($download, $directory));
 
         if ($result->exitCode() === 127) {
-            throw new DownloadException('yt-dlp is not installed on this server. Run "php artisan downloads:install" (see README).');
+            throw new DownloadException('yt-dlp is not installed on this server. Open System → "Install video downloader" (or run "php artisan downloads:install").');
         }
 
         if ($result->failed()) {
@@ -169,7 +169,7 @@ class VideoDownloader
         return config('services.downloader.ffmpeg') ?: $this->findExecutable('ffmpeg');
     }
 
-    private function deno(): ?string
+    public function deno(): ?string
     {
         return config('services.downloader.deno') ?: $this->findExecutable('deno');
     }
@@ -201,6 +201,19 @@ class VideoDownloader
     /**
      * Folder for the programs installed by "php artisan downloads:install".
      */
+    /**
+     * yt-dlp unpacks itself into TMPDIR before running. Shared hosts often mount
+     * /tmp as "noexec", so point it at a folder inside the project instead.
+     *
+     * @return array<string, string>
+     */
+    public static function environment(): array
+    {
+        File::ensureDirectoryExists(storage_path('app/tmp'));
+
+        return ['TMPDIR' => storage_path('app/tmp')];
+    }
+
     public static function binDirectory(): string
     {
         File::ensureDirectoryExists(storage_path('app/bin'));

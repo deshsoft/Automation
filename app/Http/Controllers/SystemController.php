@@ -33,7 +33,9 @@ class SystemController extends Controller
         'storage-link' => ['label' => 'Create storage link', 'command' => 'storage:link', 'parameters' => []],
         'run-queue' => ['label' => 'Publish waiting posts now', 'command' => 'queue:work', 'parameters' => ['--stop-when-empty' => true, '--max-time' => 25]],
         'publish-due' => ['label' => 'Start due scheduled posts', 'command' => 'posts:publish-due', 'parameters' => []],
-        'install-downloader' => ['label' => 'Install video downloader', 'command' => 'downloads:install', 'parameters' => ['--ffmpeg' => true, '--deno' => true]],
+        'install-downloader' => ['label' => 'Install video downloader (1/3: yt-dlp)', 'command' => 'downloads:install', 'parameters' => []],
+        'install-ffmpeg' => ['label' => 'Install video downloader (2/3: ffmpeg for HD)', 'command' => 'downloads:install', 'parameters' => ['--ffmpeg' => true, '--without-ytdlp' => true]],
+        'install-deno' => ['label' => 'Install video downloader (3/3: Deno for YouTube)', 'command' => 'downloads:install', 'parameters' => ['--deno' => true, '--without-ytdlp' => true]],
     ];
 
     public function show(Request $request, SystemDiagnostics $diagnostics): View
@@ -87,6 +89,12 @@ class SystemController extends Controller
 
         $validated = $request->validate(['action' => ['required', Rule::in(array_keys(self::ACTIONS))]]);
         $action = self::ACTIONS[$validated['action']];
+
+        // Installs download tens of MB; give them more than the usual 30 seconds.
+        if (str_starts_with($validated['action'], 'install-')) {
+            @set_time_limit(600);
+            ignore_user_abort(true);
+        }
 
         try {
             $exitCode = Artisan::call($action['command'], $action['parameters']);
