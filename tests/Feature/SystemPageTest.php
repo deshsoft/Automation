@@ -133,4 +133,11 @@ class SystemPageTest extends TestCase
 
         $this->assertTrue(Hash::check('long-password', User::sole()->password));
     }
+
+    public function test_sidebar_links_to_the_system_page(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('dashboard'))
+            ->assertSee(route('system.show'))
+            ->assertSee('Admin');
+    }
 }

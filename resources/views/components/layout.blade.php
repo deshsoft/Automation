@@ -46,6 +46,17 @@
                         {{ $item['label'] }}
                     </a>
                 @endforeach
+
+                <div class="px-3 pt-6 pb-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">Admin</div>
+                @php($isSystemActive = request()->routeIs('system.*'))
+                <a href="{{ route('system.show') }}" @class([
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
+                    'bg-slate-800 text-white' => $isSystemActive,
+                    'hover:bg-slate-800/60 hover:text-white' => ! $isSystemActive,
+                ])>
+                    <x-icon name="cog" :class="$isSystemActive ? 'size-5 text-indigo-400' : 'size-5'" />
+                    System
+                </a>
             </nav>
 
             <div class="border-t border-slate-800 p-4">
