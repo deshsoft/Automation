@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'http' => [
+        'force_ipv4' => (bool) env('HTTP_FORCE_IPV4', false),
+    ],
+
     'facebook' => [
         'client_id' => env('FACEBOOK_APP_ID'),
         'client_secret' => env('FACEBOOK_APP_SECRET'),

@@ -7,6 +7,7 @@ use App\Http\Controllers\LinkPreviewController;
 use App\Http\Controllers\LiveStreamController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\SocialAccountController;
+use App\Http\Controllers\SystemController;
 use App\Http\Controllers\VideoDownloadController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +15,14 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::view('privacy', 'legal.privacy')->name('privacy');
 Route::view('terms', 'legal.terms')->name('terms');
+
+// Server maintenance without a terminal, protected by SYSTEM_TOKEN (works without logging in).
+Route::get('system', [SystemController::class, 'show'])->name('system.show');
+Route::post('system/unlock', [SystemController::class, 'unlock'])->middleware('throttle:5,1')->name('system.unlock');
+Route::post('system/lock', [SystemController::class, 'lock'])->name('system.lock');
+Route::post('system/run', [SystemController::class, 'run'])->middleware('throttle:20,1')->name('system.run');
+Route::post('system/ipv4', [SystemController::class, 'toggleIpv4'])->name('system.ipv4');
+Route::post('system/users', [SystemController::class, 'createUser'])->middleware('throttle:10,1')->name('system.users');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');

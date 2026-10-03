@@ -93,6 +93,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | System Page Token
+    |--------------------------------------------------------------------------
+    |
+    | Unlocks /system (server checks and maintenance without a terminal).
+    | Must be at least 32 characters; leave empty to switch the page off.
+    |
+    */
+
+    'system_token' => env('SYSTEM_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |
