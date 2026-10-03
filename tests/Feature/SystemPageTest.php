@@ -126,7 +126,7 @@ class SystemPageTest extends TestCase
         Http::fake(fn () => Http::failedConnection());
 
         $this->unlocked()->get(route('system.show', ['network' => 1]))
-            ->assertSee('The hosting company blocks these connections');
+            ->assertSee('The hosting firewall blocks the ✕ servers above.');
     }
 
     public function test_a_login_can_be_created(): void

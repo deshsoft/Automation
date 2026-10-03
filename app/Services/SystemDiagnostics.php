@@ -28,6 +28,10 @@ class SystemDiagnostics
         'YouTube' => 'https://www.googleapis.com',
         'Google login' => 'https://oauth2.googleapis.com',
         'TikTok' => 'https://open.tiktokapis.com',
+        'Facebook video files (for downloads)' => 'https://video.xx.fbcdn.net',
+        'YouTube website (for downloads)' => 'https://www.youtube.com',
+        'YouTube video files (for downloads)' => 'https://redirector.googlevideo.com',
+        'GitHub (installs the downloader)' => 'https://github.com',
     ];
 
     /**

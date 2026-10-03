@@ -76,7 +76,7 @@ class PrepareImportedVideo implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $post = $this->post->fresh() ?? $this->post;
-        $reason = mb_substr('Could not get the video from the link: '.($exception?->getMessage() ?: 'the download timed out.'), 0, 2000);
+        $reason = mb_substr('Could not get the video from the link: '.($exception?->getMessage() ?: 'the download timed out.').$this->firewallHint($exception?->getMessage()), 0, 2000);
 
         $post->videoDownload?->update(['status' => VideoDownload::STATUS_FAILED, 'error' => $reason]);
 
@@ -100,6 +100,23 @@ class PrepareImportedVideo implements ShouldQueue
         if ($post->status === PostStatus::Publishing) {
             app(PostDispatcher::class)->dispatch($post);
         }
+    }
+
+    /**
+     * Timeouts to Facebook's or YouTube's video servers mean the hosting
+     * firewall (cPanel → Outgoing Connections) blocks them.
+     */
+    private function firewallHint(?string $message): string
+    {
+        if ($message === null || ! str_contains($message, 'timed out')) {
+            return '';
+        }
+
+        return match (true) {
+            str_contains($message, 'fbcdn.net') => ' → The hosting firewall blocks Facebook\'s video servers. In cPanel → Outgoing Connections allow all of fbcdn.net (see System page).',
+            str_contains($message, 'googlevideo.com') => ' → The hosting firewall blocks YouTube\'s video servers. In cPanel → Outgoing Connections allow all of googlevideo.com (see System page).',
+            default => '',
+        };
     }
 
     /**

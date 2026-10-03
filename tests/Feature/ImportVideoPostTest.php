@@ -298,4 +298,15 @@ class ImportVideoPostTest extends TestCase
         $this->assertNull($post->fresh()->title);
         $this->assertSame('My own title line', $post->fresh()->resolvedTitle());
     }
+
+    public function test_blocked_video_server_error_explains_the_firewall(): void
+    {
+        $post = $this->preparingPost();
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('download')
+            ->andThrow(new DownloadException('Connection to video-ord5-1.xx.fbcdn.net timed out. (connect timeout=30.0)')));
+
+        (new PrepareImportedVideo($post))->handle(app(VideoDownloader::class), app(PostDispatcher::class));
+
+        $this->assertStringContainsString('Outgoing Connections allow all of fbcdn.net', $post->targets()->sole()->error);
+    }
 }

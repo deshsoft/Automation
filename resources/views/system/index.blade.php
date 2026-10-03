@@ -67,8 +67,9 @@
                     @elseif ($ipv4Works)
                         <strong>The server's IPv6 is broken, but IPv4 works.</strong> Turn on "Force IPv4" below, then connect your accounts again.
                     @else
-                        <strong>The hosting company blocks these connections.</strong> Ask hosting support to allow outgoing HTTPS (port 443) to:
-                        graph.facebook.com, graph-video.facebook.com, www.googleapis.com, oauth2.googleapis.com and open.tiktokapis.com.
+                        <strong>The hosting firewall blocks the ✕ servers above.</strong> Allow them in cPanel → <strong>Security → Outgoing Connections → Control Center</strong>.
+                        Facebook and YouTube video files come from hundreds of servers, so allow the whole domains <strong>fbcdn.net</strong> and <strong>googlevideo.com</strong>
+                        (wildcard <code>*.fbcdn.net</code> / <code>*.googlevideo.com</code>), not single names.
                     @endif
                 </div>
             @endif
