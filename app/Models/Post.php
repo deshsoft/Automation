@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Storage;
     'thumbnail_path',
     'options',
     'share_from_account_id',
+    'video_download_id',
     'stagger_seconds',
     'status',
     'scheduled_at',
@@ -74,6 +75,21 @@ class Post extends Model
     public function shareFromAccount(): BelongsTo
     {
         return $this->belongsTo(SocialAccount::class, 'share_from_account_id');
+    }
+
+    /**
+     * The download that supplies this post's video when it was imported from a link.
+     *
+     * @return BelongsTo<VideoDownload, $this>
+     */
+    public function videoDownload(): BelongsTo
+    {
+        return $this->belongsTo(VideoDownload::class);
+    }
+
+    public function isBusy(): bool
+    {
+        return in_array($this->status, [PostStatus::Preparing, PostStatus::Publishing], true);
     }
 
     public function usesShareMode(): bool

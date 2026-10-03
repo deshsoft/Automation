@@ -1,4 +1,4 @@
-<x-layout title="Post" :refresh="$post->status === \App\Enums\PostStatus::Publishing">
+<x-layout title="Post" :refresh="$post->isBusy()">
 
     <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-3">
@@ -13,13 +13,13 @@
                     Open all posts ({{ $postLinks->count() }})
                 </button>
             @endif
-            @if ($post->targets->contains(fn ($target) => $target->status === \App\Enums\TargetStatus::Failed) && $post->status !== \App\Enums\PostStatus::Publishing)
+            @if ($post->targets->contains(fn ($target) => $target->status === \App\Enums\TargetStatus::Failed) && ! $post->isBusy())
                 <form method="POST" action="{{ route('posts.retry', $post) }}">
                     @csrf
                     <button class="rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600">Retry failed</button>
                 </form>
             @endif
-            @if ($post->status !== \App\Enums\PostStatus::Publishing)
+            @if (! $post->isBusy())
                 <form method="POST" action="{{ route('posts.destroy', $post) }}" data-confirm="{{ $post->status === \App\Enums\PostStatus::Scheduled ? 'Cancel this scheduled post?' : 'Delete this post from the dashboard? (It stays on the social networks.)' }}" onsubmit="return confirm(this.dataset.confirm)">
                     @csrf @method('DELETE')
                     <button class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
@@ -29,6 +29,22 @@
             @endif
         </div>
     </div>
+
+    @if ($post->option('import_url'))
+        <div @class([
+            'mb-6 rounded-xl border px-5 py-4 text-sm',
+            'border-purple-200 bg-purple-50 text-purple-900' => $post->status === \App\Enums\PostStatus::Preparing,
+            'border-slate-200 bg-white text-slate-700' => $post->status !== \App\Enums\PostStatus::Preparing,
+        ])>
+            @if ($post->status === \App\Enums\PostStatus::Preparing)
+                <div class="font-semibold">⏳ Downloading the video… this page refreshes by itself.</div>
+                <div class="mt-1">When the download finishes, the video is published to the selected accounts automatically.</div>
+            @else
+                <div class="font-semibold">🎬 Video taken from a link</div>
+            @endif
+            <a href="{{ $post->option('import_url') }}" target="_blank" rel="noopener" class="mt-1 block truncate text-indigo-600 hover:underline">{{ $post->option('import_url') }}</a>
+        </div>
+    @endif
 
     @php($facebookLinks = $post->targets->filter(fn ($target) => $target->permalink && $target->socialAccount->platform === \App\Enums\Platform::Facebook)->pluck('permalink')->values())
     @if ($facebookLinks->isNotEmpty())

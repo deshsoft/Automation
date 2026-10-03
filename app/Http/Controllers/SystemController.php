@@ -33,6 +33,7 @@ class SystemController extends Controller
         'storage-link' => ['label' => 'Create storage link', 'command' => 'storage:link', 'parameters' => []],
         'run-queue' => ['label' => 'Publish waiting posts now', 'command' => 'queue:work', 'parameters' => ['--stop-when-empty' => true, '--max-time' => 25]],
         'publish-due' => ['label' => 'Start due scheduled posts', 'command' => 'posts:publish-due', 'parameters' => []],
+        'install-downloader' => ['label' => 'Install video downloader', 'command' => 'downloads:install', 'parameters' => ['--ffmpeg' => true, '--deno' => true]],
     ];
 
     public function show(Request $request, SystemDiagnostics $diagnostics): View

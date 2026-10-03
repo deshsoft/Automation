@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum PostStatus: string
 {
+    case Preparing = 'preparing';
     case Scheduled = 'scheduled';
     case Publishing = 'publishing';
     case Published = 'published';
@@ -14,6 +15,7 @@ enum PostStatus: string
     public function label(): string
     {
         return match ($this) {
+            self::Preparing => 'Downloading video',
             self::Scheduled => 'Scheduled',
             self::Publishing => 'Publishing',
             self::Published => 'Published',
@@ -26,6 +28,7 @@ enum PostStatus: string
     public function color(): string
     {
         return match ($this) {
+            self::Preparing => 'bg-purple-100 text-purple-800',
             self::Scheduled => 'bg-blue-100 text-blue-800',
             self::Publishing => 'bg-amber-100 text-amber-800',
             self::Published => 'bg-green-100 text-green-800',

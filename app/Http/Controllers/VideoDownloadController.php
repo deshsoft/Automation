@@ -18,7 +18,7 @@ class VideoDownloadController extends Controller
 {
     public function index(Request $request, VideoDownloader $downloader): View
     {
-        $downloads = $request->user()->videoDownloads()->latest()->limit(50)->get();
+        $downloads = $request->user()->videoDownloads()->whereDoesntHave('post')->latest()->limit(50)->get();
 
         return view('downloads.index', [
             'downloads' => $downloads,

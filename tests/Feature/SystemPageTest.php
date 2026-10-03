@@ -88,6 +88,11 @@ class SystemPageTest extends TestCase
             ->assertSessionHas('command_output', fn (string $output) => str_contains($output, 'Started 0 scheduled post(s).'));
     }
 
+    public function test_downloader_install_is_offered(): void
+    {
+        $this->unlocked()->get(route('system.show'))->assertSee('Install video downloader');
+    }
+
     public function test_only_listed_actions_can_run(): void
     {
         $this->unlocked()->post(route('system.run'), ['action' => 'db:wipe'])->assertSessionHasErrors('action');

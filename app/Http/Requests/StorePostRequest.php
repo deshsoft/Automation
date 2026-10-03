@@ -4,6 +4,8 @@ namespace App\Http\Requests;
 
 use App\Enums\Platform;
 use App\Models\SocialAccount;
+use App\Models\VideoDownload;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -44,6 +46,16 @@ class StorePostRequest extends FormRequest
             'title' => ['nullable', 'string', 'max:100'],
             'caption' => ['nullable', 'string', 'max:5000'],
             'link' => ['nullable', 'url:http,https', 'max:2000'],
+            'import_url' => [
+                'nullable',
+                'url:http,https',
+                'max:2048',
+                function (string $attribute, mixed $value, Closure $fail) {
+                    if (VideoDownload::sourceOf((string) $value) === null) {
+                        $fail('Paste a YouTube or Facebook video link.');
+                    }
+                },
+            ],
             'captions' => ['nullable', 'array'],
             'captions.*' => ['nullable', 'string', 'max:5000'],
             'media' => [
@@ -102,9 +114,14 @@ class StorePostRequest extends FormRequest
 
                 $platforms = $this->selectedAccounts()->pluck('platform')->unique()->values();
                 $media = $this->file('media');
-                $isVideo = $media !== null && str_starts_with((string) $media->getMimeType(), 'video/');
+                $importsVideo = $this->filled('import_url');
+                $isVideo = $importsVideo || ($media !== null && str_starts_with((string) $media->getMimeType(), 'video/'));
 
-                if ($media === null && ! $this->filled('link') && trim((string) $this->input('caption')) === '') {
+                if ($importsVideo && ($media !== null || $this->filled('link'))) {
+                    $validator->errors()->add('import_url', 'Use only one: a video from a link, an uploaded photo/video, or a shared link.');
+                }
+
+                if ($media === null && ! $importsVideo && ! $this->filled('link') && trim((string) $this->input('caption')) === '') {
                     $validator->errors()->add('caption', 'Write a caption, attach a photo/video, or add a link.');
                 }
 
@@ -123,7 +140,7 @@ class StorePostRequest extends FormRequest
                 }
 
                 foreach ($platforms as $platform) {
-                    if ($media === null && $platform->requiresMedia()) {
+                    if ($media === null && ! $importsVideo && $platform->requiresMedia()) {
                         $validator->errors()->add('media', "{$platform->label()} needs a photo or video.");
                     } elseif ($media !== null && ! $isVideo && ! $platform->acceptsPhotos()) {
                         $validator->errors()->add('media', "{$platform->label()} only accepts videos. Untick the YouTube channels or upload a video.");
@@ -193,6 +210,7 @@ class StorePostRequest extends FormRequest
         return array_filter([
             'captions' => $captions,
             'link' => $this->input('link'),
+            'import_url' => $this->input('import_url'),
             'location_id' => $this->input('location_id'),
             'share_message' => $this->usesShareMode() ? $this->input('share_message') : null,
             'instagram' => array_filter([

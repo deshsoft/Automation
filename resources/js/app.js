@@ -76,6 +76,11 @@ function setUpComposer(form) {
         renderPreview();
     });
     form.querySelectorAll('[data-platform-caption]').forEach((field) => field.addEventListener('input', renderPreview));
+    form.querySelector('[data-import-input]')?.addEventListener('input', () => {
+        refreshMediaWarning();
+        renderPreview();
+    });
+
     const linkInput = form.querySelector('[data-link-input]');
     let linkTimer = null;
 
@@ -228,7 +233,9 @@ function setUpComposer(form) {
         if (file && file.type === 'image/png' && platforms.includes('instagram')) {
             messages.push('Instagram only accepts JPG photos.');
         }
-        if (!file && platforms.some((platform) => platform !== 'facebook')) {
+        const importsVideo = form.querySelector('[data-import-input]')?.value.trim() !== '';
+
+        if (!file && !importsVideo && platforms.some((platform) => platform !== 'facebook')) {
             messages.push('Instagram, YouTube and TikTok need a photo or video.');
         }
 
@@ -326,6 +333,8 @@ function setUpComposer(form) {
             const tall = platform === 'tiktok' || (platform === 'instagram' && mediaKind === 'video');
             media.append(mediaElement(true, `mx-auto w-full ${tall ? 'aspect-[9/16]' : 'max-h-[28rem]'} object-contain`));
         }
+        const importsVideo = form.querySelector('[data-import-input]')?.value.trim() !== '';
+        placeholder.textContent = importsVideo && !mediaUrl ? '🎬 The video will be downloaded from the link' : placeholder.dataset.defaultText ?? placeholder.textContent;
         media.classList.toggle('hidden', !mediaUrl);
         placeholder.classList.toggle('hidden', Boolean(mediaUrl) || showLink);
 

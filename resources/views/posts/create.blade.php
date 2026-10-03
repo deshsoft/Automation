@@ -49,6 +49,19 @@
                     @endforeach
                 </section>
 
+                {{-- Video from a link --}}
+                <section class="rounded-lg border border-purple-200 bg-purple-50/40 p-5">
+                    <label for="import_url" class="mb-1 block font-semibold">🎬 Video from a link <span class="font-normal text-gray-500">(YouTube or Facebook, optional)</span></label>
+                    <input id="import_url" name="import_url" type="text" inputmode="url" value="{{ old('import_url') }}" data-import-input
+                           placeholder="https://www.youtube.com/watch?v=…  or  https://www.facebook.com/…/videos/…"
+                           class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none">
+                    <p class="mt-1 text-xs text-gray-600">
+                        The server downloads the video, then uploads it to every account you selected (YouTube, TikTok, Facebook, Instagram).
+                        Use this instead of uploading a file. YouTube and TikTok have no "share" option, so this is the way to repost there.
+                    </p>
+                    <p class="mt-1 text-xs text-amber-700">Only repost videos you own or have permission to use: re-uploading other channels' videos can cause copyright strikes.</p>
+                </section>
+
                 {{-- Link --}}
                 <section class="rounded-lg border border-gray-200 bg-white p-5">
                     <label for="link" class="mb-1 block font-semibold">🔗 Share a link <span class="font-normal text-gray-500">(optional, Facebook Pages only)</span></label>
@@ -286,7 +299,7 @@
                         </div>
                     </div>
                     <div data-preview-media class="hidden bg-black"></div>
-                    <div data-preview-placeholder class="mx-4 mb-4 flex h-40 items-center justify-center rounded-md bg-gray-100 text-sm text-gray-400">Photo or video preview</div>
+                    <div data-preview-placeholder class="mx-4 mb-4 flex h-40 items-center justify-center rounded-md bg-gray-100 px-4 text-center text-sm text-gray-400" data-default-text="Photo or video preview">Photo or video preview</div>
                     <div class="flex justify-around border-t border-gray-100 py-2 text-xs text-gray-500">
                         <span>👍 Like</span><span>💬 Comment</span><span>↗ Share</span>
                     </div>

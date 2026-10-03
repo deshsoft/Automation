@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
 use App\Http\Requests\StorePostRequest;
+use App\Jobs\PrepareImportedVideo;
 use App\Models\Post;
+use App\Models\VideoDownload;
 use App\Services\Publishing\PostDispatcher;
 use App\Services\ThumbnailOptimizer;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +24,7 @@ class PostController extends Controller
      */
     private const STATUS_FILTERS = [
         'scheduled' => [PostStatus::Scheduled],
-        'publishing' => [PostStatus::Publishing],
+        'publishing' => [PostStatus::Preparing, PostStatus::Publishing],
         'published' => [PostStatus::Published],
         'failed' => [PostStatus::Failed, PostStatus::PartiallyFailed],
     ];
@@ -88,9 +90,23 @@ class PostController extends Controller
                 'options' => $request->postOptions(),
                 'share_from_account_id' => $request->usesShareMode() ? (int) $request->input('share_from_account_id') : null,
                 'stagger_seconds' => (int) $request->input('stagger_seconds', 0),
-                'status' => $scheduledAt ? PostStatus::Scheduled : PostStatus::Publishing,
+                'status' => match (true) {
+                    $request->filled('import_url') => PostStatus::Preparing,
+                    $scheduledAt !== null => PostStatus::Scheduled,
+                    default => PostStatus::Publishing,
+                },
                 'scheduled_at' => $scheduledAt,
             ]);
+
+            if ($request->filled('import_url')) {
+                $download = $request->user()->videoDownloads()->create([
+                    'url' => $request->input('import_url'),
+                    'source' => VideoDownload::sourceOf($request->input('import_url')),
+                    'quality' => '1080',
+                    'status' => VideoDownload::STATUS_QUEUED,
+                ]);
+                $post->update(['video_download_id' => $download->id, 'media_type' => Post::MEDIA_VIDEO]);
+            }
 
             foreach ($request->validated('accounts') as $accountId) {
                 $post->targets()->create(['social_account_id' => $accountId, 'status' => TargetStatus::Pending]);
@@ -98,6 +114,12 @@ class PostController extends Controller
 
             return $post;
         });
+
+        if ($post->status === PostStatus::Preparing) {
+            PrepareImportedVideo::dispatch($post);
+
+            return redirect()->route('posts.show', $post)->with('success', 'Downloading the video. It will be published automatically when ready.');
+        }
 
         if ($scheduledAt === null) {
             $dispatcher->dispatch($post);
@@ -140,7 +162,7 @@ class PostController extends Controller
             return back()->with('success', 'Scheduled post cancelled.');
         }
 
-        if ($post->status === PostStatus::Publishing) {
+        if ($post->isBusy()) {
             return back()->with('error', 'This post is publishing right now. Wait until it finishes.');
         }
 
