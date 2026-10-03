@@ -38,10 +38,22 @@ class SystemController extends Controller
         'install-deno' => ['label' => 'Install video downloader (3/3: Deno for YouTube)', 'command' => 'downloads:install', 'parameters' => ['--deno' => true, '--without-ytdlp' => true]],
     ];
 
-    public function show(Request $request, SystemDiagnostics $diagnostics): View
+    public function show(Request $request, SystemDiagnostics $diagnostics): View|RedirectResponse
     {
-        if (! $this->isEnabled()) {
+        if ($request->user() === null && ! $this->isEnabled()) {
             return view('system.disabled');
+        }
+
+        // A bookmarkable link: /system?token=... unlocks the page, then the
+        // token is removed from the address bar.
+        if ($request->user() === null && $request->filled('token')) {
+            if (! $this->tokenMatches((string) $request->query('token'), $request)) {
+                return redirect()->route('system.show')->withErrors(['token' => 'Wrong access token in the link.']);
+            }
+
+            $this->unlockSession($request);
+
+            return redirect()->route('system.show');
         }
 
         if (! $this->isUnlocked($request)) {
@@ -55,6 +67,7 @@ class SystemController extends Controller
             'forcesIpv4' => SystemDiagnostics::forcesIpv4(),
             'ipv4FromEnv' => (bool) config('services.http.force_ipv4'),
             'cronCommand' => 'cd '.base_path().' && '.$this->cliPhp().' artisan schedule:run >> /dev/null 2>&1',
+            'unlockedWithToken' => $request->user() === null,
         ]);
     }
 
@@ -64,14 +77,11 @@ class SystemController extends Controller
 
         $request->validate(['token' => ['required', 'string']]);
 
-        if (! hash_equals((string) config('app.system_token'), (string) $request->input('token'))) {
-            Log::warning('Wrong system token entered', ['ip' => $request->ip()]);
-
+        if (! $this->tokenMatches((string) $request->input('token'), $request)) {
             return back()->withErrors(['token' => 'Wrong access token.']);
         }
 
-        $request->session()->regenerate();
-        $request->session()->put(self::SESSION_KEY, now()->addMinutes(30)->timestamp);
+        $this->unlockSession($request);
 
         return redirect()->route('system.show');
     }
@@ -151,18 +161,43 @@ class SystemController extends Controller
         return str_ends_with(PHP_BINARY, '/php') ? PHP_BINARY : '/usr/local/bin/php';
     }
 
+    private function tokenMatches(string $token, Request $request): bool
+    {
+        if (hash_equals((string) config('app.system_token'), $token)) {
+            return true;
+        }
+
+        Log::warning('Wrong system token entered', ['ip' => $request->ip()]);
+
+        return false;
+    }
+
+    private function unlockSession(Request $request): void
+    {
+        $request->session()->regenerate();
+        $request->session()->put(self::SESSION_KEY, now()->addMinutes(30)->timestamp);
+    }
+
     private function isEnabled(): bool
     {
         return mb_strlen((string) config('app.system_token')) >= self::MINIMUM_TOKEN_LENGTH;
     }
 
+    /**
+     * Signed-in users open the page directly from the admin menu. The token is
+     * only for opening it without logging in (e.g. when login itself is broken).
+     */
     private function isUnlocked(Request $request): bool
     {
+        if ($request->user() !== null) {
+            return true;
+        }
+
         return $this->isEnabled() && (int) $request->session()->get(self::SESSION_KEY, 0) > now()->timestamp;
     }
 
     private function ensureUnlocked(Request $request): void
     {
-        abort_unless($this->isUnlocked($request), 403, 'Unlock the System page with the access token first.');
+        abort_unless($this->isUnlocked($request), 403, 'Log in, or unlock the System page with the access token.');
     }
 }

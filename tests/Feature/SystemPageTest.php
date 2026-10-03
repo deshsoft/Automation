@@ -146,4 +146,33 @@ class SystemPageTest extends TestCase
             ->assertSee(route('system.show'))
             ->assertSee('Admin');
     }
+
+    public function test_signed_in_users_open_the_page_without_a_token(): void
+    {
+        config(['app.system_token' => null]);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('system.show'))
+            ->assertOk()
+            ->assertSee('Server checks')
+            ->assertDontSee('Access token');
+
+        $this->actingAs($user)->post(route('system.run'), ['action' => 'publish-due'])->assertSessionHas('success');
+    }
+
+    public function test_token_in_the_link_unlocks_the_page_and_is_removed_from_the_address(): void
+    {
+        $this->get(route('system.show', ['token' => self::TOKEN]))->assertRedirect(route('system.show'));
+
+        $this->get(route('system.show'))->assertOk()->assertSee('Server checks');
+    }
+
+    public function test_wrong_token_in_the_link_is_rejected(): void
+    {
+        $this->get(route('system.show', ['token' => 'wrong-token']))
+            ->assertRedirect(route('system.show'))
+            ->assertSessionHasErrors('token');
+
+        $this->get(route('system.show'))->assertSee('Access token')->assertDontSee('Server checks');
+    }
 }

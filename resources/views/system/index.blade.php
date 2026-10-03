@@ -12,12 +12,14 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h2 class="text-xl font-semibold">Server health and maintenance</h2>
-                <p class="text-sm text-slate-500">Everything you would normally do in a terminal. Unlocked for 30 minutes.</p>
+                <p class="text-sm text-slate-500">Everything you would normally do in a terminal.{{ $unlockedWithToken ? ' Unlocked with the access token for 30 minutes.' : '' }}</p>
             </div>
-            <form method="POST" action="{{ route('system.lock') }}">
-                @csrf
-                <button class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Lock</button>
-            </form>
+            @if ($unlockedWithToken)
+                <form method="POST" action="{{ route('system.lock') }}">
+                    @csrf
+                    <button class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Lock</button>
+                </form>
+            @endif
         </div>
 
         @if (session('command_output'))

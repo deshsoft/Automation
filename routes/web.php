@@ -17,7 +17,7 @@ Route::view('privacy', 'legal.privacy')->name('privacy');
 Route::view('terms', 'legal.terms')->name('terms');
 
 // Server maintenance without a terminal, protected by SYSTEM_TOKEN (works without logging in).
-Route::get('system', [SystemController::class, 'show'])->name('system.show');
+Route::get('system', [SystemController::class, 'show'])->middleware('throttle:30,1')->name('system.show');
 Route::post('system/unlock', [SystemController::class, 'unlock'])->middleware('throttle:5,1')->name('system.unlock');
 Route::post('system/lock', [SystemController::class, 'lock'])->name('system.lock');
 Route::post('system/run', [SystemController::class, 'run'])->middleware('throttle:20,1')->name('system.run');
