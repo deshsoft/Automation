@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\Platform;
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
 use App\Exceptions\DownloadException;
@@ -68,14 +69,37 @@ class PrepareImportedVideo implements ShouldQueue
         }
     }
 
+    /**
+     * Fail the accounts that needed the video. Facebook Pages that share the
+     * link do not need it, so they are still published.
+     */
     public function failed(?Throwable $exception): void
     {
         $post = $this->post->fresh() ?? $this->post;
-        $reason = 'Could not get the video from the link: '.($exception?->getMessage() ?: 'the download timed out.');
+        $reason = mb_substr('Could not get the video from the link: '.($exception?->getMessage() ?: 'the download timed out.'), 0, 2000);
 
-        $post->videoDownload?->update(['status' => VideoDownload::STATUS_FAILED, 'error' => mb_substr($reason, 0, 2000)]);
-        $post->targets()->where('status', TargetStatus::Pending)->update(['status' => TargetStatus::Failed, 'error' => mb_substr($reason, 0, 2000)]);
-        $post->update(['status' => PostStatus::Failed]);
+        $post->videoDownload?->update(['status' => VideoDownload::STATUS_FAILED, 'error' => $reason]);
+
+        $needVideo = $post->targets()
+            ->where('status', TargetStatus::Pending)
+            ->when(filled($post->option('link')), fn ($query) => $query->whereHas(
+                'socialAccount',
+                fn ($query) => $query->where('platform', '!=', Platform::Facebook),
+            ));
+        $needVideo->update(['status' => TargetStatus::Failed, 'error' => $reason]);
+
+        if (! $post->targets()->where('status', TargetStatus::Pending)->exists()) {
+            $post->update(['status' => PostStatus::Failed]);
+            $post->refreshStatus();
+
+            return;
+        }
+
+        $post->update(['status' => $post->scheduled_at?->isFuture() ? PostStatus::Scheduled : PostStatus::Publishing]);
+
+        if ($post->status === PostStatus::Publishing) {
+            app(PostDispatcher::class)->dispatch($post);
+        }
     }
 
     /**

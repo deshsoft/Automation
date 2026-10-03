@@ -38,6 +38,7 @@ function setUpComposer(form) {
         refreshShareOptions();
         refreshTabs();
         refreshMediaWarning();
+        refreshDownloadNote();
         renderPreview();
     }
 
@@ -76,12 +77,58 @@ function setUpComposer(form) {
         renderPreview();
     });
     form.querySelectorAll('[data-platform-caption]').forEach((field) => field.addEventListener('input', renderPreview));
-    form.querySelector('[data-import-input]')?.addEventListener('input', () => {
+    // Only one kind of content per post: the inputs of hidden modes are
+    // disabled so they are not submitted.
+    const contentModes = [...form.querySelectorAll('[data-content-mode]')];
+
+    function refreshContentMode() {
+        const mode = contentModes.find((radio) => radio.checked)?.value ?? 'upload';
+
+        form.querySelectorAll('[data-mode-section]').forEach((section) => {
+            const isActive = section.dataset.modeSection === mode;
+            section.classList.toggle('hidden', !isActive);
+            section.querySelectorAll('input, textarea, select').forEach((input) => (input.disabled = !isActive));
+        });
+
+        if (mode !== 'upload' && mediaInput.files[0]) {
+            mediaInput.value = '';
+            showMedia(null);
+        }
+
         refreshMediaWarning();
         renderPreview();
-    });
+    }
 
-    const linkInput = form.querySelector('[data-link-input]');
+    contentModes.forEach((radio) => radio.addEventListener('change', refreshContentMode));
+
+    const sourceInput = form.querySelector('[data-source-input]');
+
+    /** The "From a link" address, or '' when that mode is not selected. */
+    const sourceUrl = () => (sourceInput && !sourceInput.disabled ? sourceInput.value.trim() : '');
+
+    const facebookShares = () => form.querySelector('[data-facebook-link-mode]:checked')?.value !== 'upload';
+
+    /** Platforms that get the downloaded video instead of the link. */
+    function downloadPlatforms() {
+        return selectedPlatforms().filter((platform) => platform !== 'facebook' || !facebookShares());
+    }
+
+    function refreshDownloadNote() {
+        const note = form.querySelector('[data-download-note]');
+        const platforms = downloadPlatforms();
+        note.classList.toggle('hidden', platforms.length === 0);
+        form.querySelector('[data-download-platforms]').textContent =
+            platforms.map((platform) => PLATFORM_LABELS[platform]).join(', ') + ': downloaded and uploaded';
+    }
+
+    form.querySelectorAll('[data-facebook-link-mode]').forEach((radio) =>
+        radio.addEventListener('change', () => {
+            refreshDownloadNote();
+            renderPreview();
+        }),
+    );
+
+    const linkInput = sourceInput;
     let linkTimer = null;
 
     linkInput.addEventListener('input', () => {
@@ -233,7 +280,7 @@ function setUpComposer(form) {
         if (file && file.type === 'image/png' && platforms.includes('instagram')) {
             messages.push('Instagram only accepts JPG photos.');
         }
-        const importsVideo = form.querySelector('[data-import-input]')?.value.trim() !== '';
+        const importsVideo = sourceUrl() !== '';
 
         if (!file && !importsVideo && platforms.some((platform) => platform !== 'facebook')) {
             messages.push('Instagram, YouTube and TikTok need a photo or video.');
@@ -321,8 +368,8 @@ function setUpComposer(form) {
         captionElement.textContent = text;
         captionElement.classList.toggle('hidden', text.trim() === '');
 
-        const link = form.querySelector('[data-link-input]').value.trim();
-        const showLink = isWebAddress(link) && platform === 'facebook' && !mediaUrl;
+        const link = sourceUrl();
+        const showLink = isWebAddress(link) && platform === 'facebook' && facebookShares() && !mediaUrl;
         form.querySelector('[data-preview-link]').classList.toggle('hidden', !showLink);
 
         const media = form.querySelector('[data-preview-media]');
@@ -333,7 +380,7 @@ function setUpComposer(form) {
             const tall = platform === 'tiktok' || (platform === 'instagram' && mediaKind === 'video');
             media.append(mediaElement(true, `mx-auto w-full ${tall ? 'aspect-[9/16]' : 'max-h-[28rem]'} object-contain`));
         }
-        const importsVideo = form.querySelector('[data-import-input]')?.value.trim() !== '';
+        const importsVideo = sourceUrl() !== '' && !showLink;
         placeholder.textContent = importsVideo && !mediaUrl ? '🎬 The video will be downloaded from the link' : placeholder.dataset.defaultText ?? placeholder.textContent;
         media.classList.toggle('hidden', !mediaUrl);
         placeholder.classList.toggle('hidden', Boolean(mediaUrl) || showLink);
@@ -363,6 +410,7 @@ function setUpComposer(form) {
     });
 
     refreshAccounts();
+    refreshContentMode();
 }
 
 document.querySelectorAll('[data-open-all]').forEach((openAllButton) => {

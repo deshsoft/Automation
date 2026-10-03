@@ -49,37 +49,60 @@
                     @endforeach
                 </section>
 
-                {{-- Video from a link --}}
-                <section class="rounded-lg border border-purple-200 bg-purple-50/40 p-5">
-                    <label for="import_url" class="mb-1 block font-semibold">🎬 Video from a link <span class="font-normal text-gray-500">(YouTube or Facebook, optional)</span></label>
-                    <input id="import_url" name="import_url" type="text" inputmode="url" value="{{ old('import_url') }}" data-import-input
-                           placeholder="https://www.youtube.com/watch?v=…  or  https://www.facebook.com/…/videos/…"
-                           class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none">
-                    <p class="mt-1 text-xs text-gray-600">
-                        The server downloads the video, then uploads it to every account you selected (YouTube, TikTok, Facebook, Instagram).
-                        Use this instead of uploading a file. YouTube and TikTok have no "share" option, so this is the way to repost there.
-                    </p>
-                    <p class="mt-1 text-xs text-amber-700">Only repost videos you own or have permission to use: re-uploading other channels' videos can cause copyright strikes.</p>
+                {{-- What to post --}}
+                @php($contentMode = old('source_url') ? 'from_link' : 'upload')
+                <section class="rounded-lg border border-gray-200 bg-white p-5">
+                    <h2 class="mb-3 font-semibold">What do you want to post?</h2>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                        @foreach ([
+                            'upload' => ['📁', 'Upload photo/video', 'From this computer or phone, or text only'],
+                            'from_link' => ['🔗', 'From a link', 'A Facebook or YouTube link: share it or repost the video'],
+                        ] as $mode => [$emoji, $label, $hint])
+                            <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50 has-checked:border-indigo-400 has-checked:bg-indigo-50">
+                                <input type="radio" name="content_mode" value="{{ $mode }}" data-content-mode class="mt-1" @checked($contentMode === $mode)>
+                                <span>
+                                    <span class="block text-sm font-medium">{{ $emoji }} {{ $label }}</span>
+                                    <span class="block text-xs text-gray-500">{{ $hint }}</span>
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
                 </section>
 
-                {{-- Link --}}
-                <section class="rounded-lg border border-gray-200 bg-white p-5">
-                    <label for="link" class="mb-1 block font-semibold">🔗 Share a link <span class="font-normal text-gray-500">(optional, Facebook Pages only)</span></label>
-                    <input id="link" name="link" type="text" inputmode="url" value="{{ old('link') }}" data-link-input
-                           placeholder="Paste a Facebook post, news or YouTube link"
-                           class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none">
-                    <p data-link-warning class="mt-1 hidden text-sm font-medium text-red-600">
-                        This is not a link. Paste the post's address (it starts with https://), not its text.
-                    </p>
-                    <p class="mt-1 text-xs text-gray-500">
-                        To share someone else's post: open it on Facebook, click <strong>⋯ → Copy link</strong> (or <strong>Share → Copy link</strong>), and paste it here.
-                        The post must be <strong>public</strong>. Write your own text in the <strong>Caption</strong> box below; it appears above the shared post.
-                        Do not add a photo/video with a link.
-                    </p>
+                {{-- From a link --}}
+                <section data-mode-section="from_link" class="space-y-4 rounded-lg border border-indigo-200 bg-indigo-50/30 p-5">
+                    <div>
+                        <label for="source_url" class="mb-1 block font-semibold">🔗 Link</label>
+                        <input id="source_url" name="source_url" type="text" inputmode="url" value="{{ old('source_url') }}" data-source-input
+                               placeholder="https://www.facebook.com/…  or  https://www.youtube.com/watch?v=…"
+                               class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none">
+                        <p data-link-warning class="mt-1 hidden text-sm font-medium text-red-600">
+                            This is not a link. Paste the address (it starts with https://), not the post's text.
+                        </p>
+                        <p class="mt-1 text-xs text-gray-500">On Facebook: <strong>⋯ → Copy link</strong> (or <strong>Share → Copy link</strong>). On YouTube: <strong>Share → Copy</strong>. The post or video must be <strong>public</strong>.</p>
+                    </div>
+
+                    <div data-platform-section="facebook" class="rounded-md border border-gray-200 bg-white p-3">
+                        <div class="mb-2 text-sm font-semibold">Facebook Pages</div>
+                        <label class="flex items-start gap-2 text-sm">
+                            <input type="radio" name="facebook_link_mode" value="share" data-facebook-link-mode class="mt-0.5" @checked(old('facebook_link_mode', 'share') === 'share')>
+                            <span><span class="font-medium">Share the link</span> <span class="text-gray-500">(recommended for other people's posts: likes and views stay on the original)</span></span>
+                        </label>
+                        <label class="mt-1 flex items-start gap-2 text-sm">
+                            <input type="radio" name="facebook_link_mode" value="upload" data-facebook-link-mode class="mt-0.5" @checked(old('facebook_link_mode') === 'upload')>
+                            <span><span class="font-medium">Download the video and upload it</span> <span class="text-gray-500">(as a new video on each Page; for your own videos)</span></span>
+                        </label>
+                    </div>
+
+                    <div data-download-note class="rounded-md bg-white p-3 text-sm text-gray-700">
+                        <div class="font-semibold">⬇️ <span data-download-platforms>YouTube, TikTok and Instagram</span></div>
+                        <div class="mt-0.5 text-gray-600">They cannot share links, so the server downloads the video and uploads it. The post first shows "Downloading video", then publishes by itself.</div>
+                        <div class="mt-1 text-xs text-amber-700">Only repost videos you own or have permission to use: re-uploading other channels' videos can cause copyright strikes.</div>
+                    </div>
                 </section>
 
                 {{-- Media --}}
-                <section class="rounded-lg border border-gray-200 bg-white p-5">
+                <section data-mode-section="upload" class="rounded-lg border border-gray-200 bg-white p-5">
                     <h2 class="mb-3 font-semibold">Photo or video</h2>
                     <label data-dropzone class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40">
                         <svg class="size-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/></svg>

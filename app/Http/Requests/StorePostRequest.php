@@ -32,6 +32,31 @@ class StorePostRequest extends FormRequest
     /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
+    /**
+     * "From a link" posts send one source_url. Turn it into what each platform
+     * needs: a shared link for Facebook (when chosen) and a downloaded video
+     * for everything else (YouTube and TikTok cannot share links).
+     */
+    protected function prepareForValidation(): void
+    {
+        $sourceUrl = trim((string) $this->input('source_url'));
+
+        if ($sourceUrl === '') {
+            return;
+        }
+
+        $platforms = $this->selectedAccounts()->pluck('platform')->unique();
+        $hasFacebook = $platforms->contains(Platform::Facebook);
+        $facebookShares = $hasFacebook && $this->input('facebook_link_mode', 'share') !== 'upload';
+        $needsDownload = $platforms->contains(fn (Platform $platform) => $platform !== Platform::Facebook)
+            || ($hasFacebook && ! $facebookShares);
+
+        $this->merge([
+            'link' => $facebookShares ? $sourceUrl : null,
+            'import_url' => $needsDownload ? $sourceUrl : null,
+        ]);
+    }
+
     public function rules(): array
     {
         return [
@@ -46,6 +71,8 @@ class StorePostRequest extends FormRequest
             'title' => ['nullable', 'string', 'max:100'],
             'caption' => ['nullable', 'string', 'max:5000'],
             'link' => ['nullable', 'url:http,https', 'max:2000'],
+            'source_url' => ['nullable', 'url:http,https', 'max:2048'],
+            'facebook_link_mode' => ['nullable', Rule::in(['share', 'upload'])],
             'import_url' => [
                 'nullable',
                 'url:http,https',
@@ -117,7 +144,7 @@ class StorePostRequest extends FormRequest
                 $importsVideo = $this->filled('import_url');
                 $isVideo = $importsVideo || ($media !== null && str_starts_with((string) $media->getMimeType(), 'video/'));
 
-                if ($importsVideo && ($media !== null || $this->filled('link'))) {
+                if ($importsVideo && ($media !== null || ($this->filled('link') && $this->input('link') !== $this->input('import_url')))) {
                     $validator->errors()->add('import_url', 'Use only one: a video from a link, an uploaded photo/video, or a shared link.');
                 }
 
@@ -134,7 +161,7 @@ class StorePostRequest extends FormRequest
                         $validator->errors()->add('link', 'Share either a link or a photo/video, not both.');
                     }
 
-                    if ($platforms->contains(fn (Platform $platform) => $platform !== Platform::Facebook)) {
+                    if (! $importsVideo && $platforms->contains(fn (Platform $platform) => $platform !== Platform::Facebook)) {
                         $validator->errors()->add('link', 'Links can only be shared to Facebook Pages. Untick the other accounts.');
                     }
                 }
@@ -271,7 +298,7 @@ class StorePostRequest extends FormRequest
     private function selectedAccounts(): Collection
     {
         return $this->selectedAccounts ??= SocialAccount::query()
-            ->whereIn('id', $this->input('accounts', []))
+            ->whereIn('id', array_filter((array) $this->input('accounts', []), 'is_numeric'))
             ->get();
     }
 }

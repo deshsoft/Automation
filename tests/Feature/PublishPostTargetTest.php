@@ -159,6 +159,23 @@ class PublishPostTargetTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_facebook_shares_the_link_even_when_a_video_was_downloaded_for_other_platforms(): void
+    {
+        Storage::disk('public')->put('media/video.mp4', 'mp4-bytes');
+        Http::fake([
+            'graph.facebook.com/v24.0/111/feed' => Http::response(['id' => '111_3']),
+            'graph.facebook.com/v24.0/111_3*' => Http::response([]),
+        ]);
+        $page = SocialAccount::factory()->facebook()->create(['platform_account_id' => '111']);
+        $post = Post::factory()->for($page->user)->withVideo()->create(['options' => ['link' => 'https://www.youtube.com/watch?v=abc']]);
+        $target = $this->targetFor($page, $post);
+
+        $this->runJob($target);
+
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/111/feed') && $request['link'] === 'https://www.youtube.com/watch?v=abc');
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'graph-video'));
+    }
+
     public function test_facebook_video_file_is_uploaded_to_the_video_host(): void
     {
         Storage::disk('public')->put('media/video.mp4', 'mp4-bytes');

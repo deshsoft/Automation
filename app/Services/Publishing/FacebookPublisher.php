@@ -34,7 +34,16 @@ class FacebookPublisher implements Publisher
         $caption = $post->captionFor(Platform::Facebook);
         $place = (string) $post->option('location_id');
 
-        if ($post->isVideo()) {
+        if (filled($post->option('link'))) {
+            // "From a link" with Facebook set to share: share the link even when
+            // a video was downloaded for the other platforms.
+            $response = Http::asForm()->connectTimeout(10)->timeout(60)->post($this->url($account->platform_account_id.'/feed'), array_filter([
+                'message' => $caption,
+                'link' => $this->linkPreviewer->canonicalFacebookUrl((string) $post->option('link')),
+                'place' => $place,
+                'access_token' => $account->access_token,
+            ], fn (string $value) => $value !== ''));
+        } elseif ($post->isVideo()) {
             $response = $this->upload($post, $this->url($account->platform_account_id.'/videos', video: true), [
                 'description' => $caption,
                 'title' => (string) $post->title,
@@ -49,7 +58,6 @@ class FacebookPublisher implements Publisher
         } else {
             $response = Http::asForm()->connectTimeout(10)->timeout(60)->post($this->url($account->platform_account_id.'/feed'), array_filter([
                 'message' => $caption,
-                'link' => filled($post->option('link')) ? $this->linkPreviewer->canonicalFacebookUrl((string) $post->option('link')) : '',
                 'place' => $place,
                 'access_token' => $account->access_token,
             ], fn (string $value) => $value !== ''));

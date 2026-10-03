@@ -177,4 +177,94 @@ class ImportVideoPostTest extends TestCase
 
         return $post;
     }
+
+    public function test_one_link_shares_on_facebook_and_downloads_for_youtube(): void
+    {
+        Queue::fake();
+        $page = SocialAccount::factory()->facebook()->create();
+        $channel = SocialAccount::factory()->for($page->user)->youtube()->create();
+
+        $this->actingAs($page->user)->post(route('posts.store'), [
+            'accounts' => [$page->id, $channel->id],
+            'source_url' => 'https://www.facebook.com/page/videos/123',
+            'facebook_link_mode' => 'share',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $post = Post::sole();
+        $this->assertSame('https://www.facebook.com/page/videos/123', $post->option('link'));
+        $this->assertSame('https://www.facebook.com/page/videos/123', $post->option('import_url'));
+        $this->assertSame(PostStatus::Preparing, $post->status);
+        Queue::assertPushed(PrepareImportedVideo::class);
+    }
+
+    public function test_facebook_can_upload_the_downloaded_video_instead_of_sharing(): void
+    {
+        Queue::fake();
+        $page = SocialAccount::factory()->facebook()->create();
+
+        $this->actingAs($page->user)->post(route('posts.store'), [
+            'accounts' => [$page->id],
+            'source_url' => 'https://www.youtube.com/watch?v=abc123',
+            'facebook_link_mode' => 'upload',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $post = Post::sole();
+        $this->assertNull($post->option('link'));
+        $this->assertSame(PostStatus::Preparing, $post->status);
+    }
+
+    public function test_link_for_facebook_only_is_shared_without_downloading(): void
+    {
+        Queue::fake();
+        $page = SocialAccount::factory()->facebook()->create();
+
+        $this->actingAs($page->user)->post(route('posts.store'), [
+            'accounts' => [$page->id],
+            'source_url' => 'https://news.example.com/story',
+            'facebook_link_mode' => 'share',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $post = Post::sole();
+        $this->assertSame(PostStatus::Publishing, $post->status);
+        $this->assertNull($post->option('import_url'));
+        Queue::assertNotPushed(PrepareImportedVideo::class);
+        Queue::assertPushed(PublishPostTarget::class, 1);
+    }
+
+    public function test_youtube_needs_a_video_link_not_a_news_link(): void
+    {
+        $page = SocialAccount::factory()->facebook()->create();
+        $channel = SocialAccount::factory()->for($page->user)->youtube()->create();
+
+        $this->actingAs($page->user)->post(route('posts.store'), [
+            'accounts' => [$page->id, $channel->id],
+            'source_url' => 'https://news.example.com/story',
+            'facebook_link_mode' => 'share',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasErrors('import_url');
+    }
+
+    public function test_failed_download_still_shares_on_facebook(): void
+    {
+        Queue::fake();
+        $post = $this->preparingPost(['options' => [
+            'import_url' => 'https://www.facebook.com/page/videos/123',
+            'link' => 'https://www.facebook.com/page/videos/123',
+        ]]);
+        $page = SocialAccount::factory()->for($post->user)->facebook()->create();
+        $facebookTarget = PostTarget::factory()->forPostAndAccount($post, $page)->create();
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('download')
+            ->andThrow(new DownloadException('Video unavailable.')));
+
+        (new PrepareImportedVideo($post))->handle(app(VideoDownloader::class), app(PostDispatcher::class));
+
+        $youtubeTarget = $post->targets()->whereKeyNot($facebookTarget->id)->sole();
+        $this->assertSame(TargetStatus::Failed, $youtubeTarget->status);
+        $this->assertSame(TargetStatus::Pending, $facebookTarget->fresh()->status);
+        $this->assertSame(PostStatus::Publishing, $post->fresh()->status);
+        Queue::assertPushed(PublishPostTarget::class, fn (PublishPostTarget $job) => $job->target->is($facebookTarget));
+    }
 }
