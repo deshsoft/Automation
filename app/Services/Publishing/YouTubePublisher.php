@@ -8,6 +8,7 @@ use App\Models\PostTarget;
 use App\Services\Connectors\GoogleConnector;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Uploads the video with YouTube's resumable upload protocol, in chunks, so
@@ -26,11 +27,15 @@ class YouTubePublisher implements Publisher
     {
         $post = $target->post;
 
-        if (! $post->isVideo()) {
+        // A photo post from a link gets a short video made for YouTube.
+        $generatedVideo = $post->option('youtube_video_path');
+
+        if (! $post->isVideo() && blank($generatedVideo)) {
             throw new PublishingException('YouTube only accepts videos.');
         }
 
-        $path = $post->mediaLocalPath();
+        $path = $post->isVideo() ? $post->mediaLocalPath() : Storage::disk('public')->path((string) $generatedVideo);
+        $mime = $post->isVideo() ? (string) $post->media_mime : 'video/mp4';
 
         if ($path === null || ! is_file($path)) {
             throw new PublishingException('The video file is missing on the server.');
@@ -39,9 +44,9 @@ class YouTubePublisher implements Publisher
         $accessToken = $this->google->freshAccessToken($target->socialAccount);
         $fileSize = filesize($path);
 
-        $uploadUrl = $this->startUploadSession($target, $accessToken, $fileSize);
+        $uploadUrl = $this->startUploadSession($target, $accessToken, $fileSize, $mime);
 
-        $videoId = $this->uploadChunks($uploadUrl, $accessToken, $path, $fileSize, (string) $post->media_mime);
+        $videoId = $this->uploadChunks($uploadUrl, $accessToken, $path, $fileSize, $mime);
 
         $this->setThumbnail($target, $accessToken, $videoId);
 
@@ -79,14 +84,14 @@ class YouTubePublisher implements Publisher
         }
     }
 
-    private function startUploadSession(PostTarget $target, string $accessToken, int $fileSize): string
+    private function startUploadSession(PostTarget $target, string $accessToken, int $fileSize, string $mime): string
     {
         $post = $target->post;
 
         $response = Http::withToken($accessToken)
             ->withHeaders([
                 'X-Upload-Content-Length' => (string) $fileSize,
-                'X-Upload-Content-Type' => (string) $post->media_mime,
+                'X-Upload-Content-Type' => $mime,
             ])
             ->connectTimeout(10)
             ->timeout(60)

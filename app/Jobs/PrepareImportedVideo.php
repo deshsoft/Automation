@@ -8,6 +8,7 @@ use App\Enums\TargetStatus;
 use App\Exceptions\DownloadException;
 use App\Models\Post;
 use App\Models\VideoDownload;
+use App\Services\Downloading\PhotoFallback;
 use App\Services\Downloading\VideoDownloader;
 use App\Services\Publishing\PostDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -47,7 +48,10 @@ class PrepareImportedVideo implements ShouldQueue
         try {
             $file = $downloader->download($download);
         } catch (DownloadException $exception) {
-            $this->failed($exception);
+            // Photo posts have no video: publish their photo instead.
+            if (! $this->usePhotoInstead($post, $dispatcher)) {
+                $this->failed($exception);
+            }
 
             return;
         }
@@ -67,6 +71,56 @@ class PrepareImportedVideo implements ShouldQueue
         if ($post->status === PostStatus::Publishing) {
             $dispatcher->dispatch($post);
         }
+    }
+
+    /**
+     * Use the link's photo when there is no video. YouTube gets a short video
+     * made from the photo; the other platforms post the photo itself.
+     */
+    private function usePhotoInstead(Post $post, PostDispatcher $dispatcher): bool
+    {
+        $fallback = app(PhotoFallback::class);
+        $photoPath = $fallback->importPhoto((string) $post->videoDownload->url, $post);
+
+        if ($photoPath === null) {
+            return false;
+        }
+
+        $post->videoDownload->update(['status' => VideoDownload::STATUS_FAILED, 'error' => 'No video in this link; its photo was used instead.']);
+
+        $options = $post->options ?? [];
+        $youtubeTargets = $post->targets()
+            ->where('status', TargetStatus::Pending)
+            ->whereHas('socialAccount', fn ($query) => $query->where('platform', Platform::YouTube));
+
+        if ($youtubeTargets->exists()) {
+            $videoPath = $fallback->makeVideo($photoPath, $post);
+
+            if ($videoPath !== null) {
+                $options['youtube_video_path'] = $videoPath;
+            } else {
+                $youtubeTargets->update([
+                    'status' => TargetStatus::Failed,
+                    'error' => 'This link has a photo, not a video. YouTube only accepts videos, and ffmpeg is needed to turn the photo into one: open System → "Install video downloader (2/3: ffmpeg)", then Retry.',
+                ]);
+            }
+        }
+
+        $post->update([
+            'media_path' => $photoPath,
+            'media_type' => Post::MEDIA_PHOTO,
+            'media_mime' => 'image/jpeg',
+            'options' => $options,
+            'status' => $post->scheduled_at?->isFuture() ? PostStatus::Scheduled : PostStatus::Publishing,
+        ]);
+
+        if (! $post->targets()->where('status', TargetStatus::Pending)->exists()) {
+            $post->refreshStatus();
+        } elseif ($post->status === PostStatus::Publishing) {
+            $dispatcher->dispatch($post);
+        }
+
+        return true;
     }
 
     /**

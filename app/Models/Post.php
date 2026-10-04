@@ -153,7 +153,7 @@ class Post extends Model
      */
     public function deleteMediaFiles(): void
     {
-        Storage::disk('public')->delete(array_filter([$this->media_path, $this->thumbnail_path]));
+        Storage::disk('public')->delete(array_filter([$this->media_path, $this->thumbnail_path, $this->option('youtube_video_path')]));
     }
 
     /**
