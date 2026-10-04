@@ -33,7 +33,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
 
-    Route::resource('posts', PostController::class)->only(['index', 'create', 'store', 'show', 'destroy']);
+    Route::resource('posts', PostController::class)->only(['index', 'create', 'store', 'show', 'edit', 'update', 'destroy']);
     Route::get('link-preview', LinkPreviewController::class)->middleware('throttle:30,1')->name('link-preview');
     Route::post('posts/bulk-delete', [PostController::class, 'bulkDestroy'])->name('posts.bulk-destroy');
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');

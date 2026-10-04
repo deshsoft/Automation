@@ -40,6 +40,7 @@ class VideoDownload extends Model
         '720' => '720p (HD)',
         '480' => '480p (small file)',
         'audio' => 'Audio only (MP3)',
+        'photos' => 'Photos (Facebook photo post)',
     ];
 
     /**

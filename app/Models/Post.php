@@ -87,6 +87,24 @@ class Post extends Model
         return $this->belongsTo(VideoDownload::class);
     }
 
+    /**
+     * Posts that have not gone out (scheduled, cancelled) or did not fully
+     * go out (failed) can still be edited.
+     */
+    public function isEditable(): bool
+    {
+        return in_array($this->status, [PostStatus::Scheduled, PostStatus::Cancelled, PostStatus::Failed, PostStatus::PartiallyFailed], true);
+    }
+
+    /**
+     * Accounts can be changed only while nothing has been published yet.
+     */
+    public function canChangeAccounts(): bool
+    {
+        return $this->isEditable()
+            && ! $this->targets()->whereIn('status', [TargetStatus::Published, TargetStatus::Manual])->exists();
+    }
+
     public function isBusy(): bool
     {
         return in_array($this->status, [PostStatus::Preparing, PostStatus::Publishing], true);

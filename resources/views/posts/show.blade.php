@@ -13,6 +13,9 @@
                     Open all posts ({{ $postLinks->count() }})
                 </button>
             @endif
+            @if ($post->isEditable())
+                <a href="{{ route('posts.edit', $post) }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">✏️ Edit</a>
+            @endif
             @if ($post->targets->contains(fn ($target) => $target->status === \App\Enums\TargetStatus::Failed) && ! $post->isBusy())
                 <form method="POST" action="{{ route('posts.retry', $post) }}">
                     @csrf

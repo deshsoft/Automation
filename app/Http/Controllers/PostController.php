@@ -6,6 +6,7 @@ use App\Enums\Platform;
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
 use App\Http\Requests\StorePostRequest;
+use App\Http\Requests\UpdatePostRequest;
 use App\Jobs\PrepareImportedVideo;
 use App\Models\Post;
 use App\Models\PostTarget;
@@ -161,6 +162,121 @@ class PostController extends Controller
         $post->targets->each->setRelation('post', $post);
 
         return view('posts.show', ['post' => $post]);
+    }
+
+    public function edit(Request $request, Post $post): View|RedirectResponse
+    {
+        Gate::authorize('update', $post);
+
+        if (! $post->isEditable()) {
+            return redirect()->route('posts.show', $post)->with('error', 'Only scheduled, cancelled or failed posts can be edited.');
+        }
+
+        $post->load('targets.socialAccount');
+
+        return view('posts.edit', [
+            'post' => $post,
+            'accounts' => $request->user()->socialAccounts()->active()->orderBy('platform')->orderBy('name')->get(),
+            'canChangeAccounts' => $post->canChangeAccounts(),
+        ]);
+    }
+
+    /**
+     * Save the changes, then keep the post as it is, schedule it, or publish
+     * (retry the failed accounts) now.
+     */
+    public function update(UpdatePostRequest $request, Post $post, PostDispatcher $dispatcher): RedirectResponse
+    {
+        if (! $post->isEditable()) {
+            return redirect()->route('posts.show', $post)->with('error', 'Only scheduled, cancelled or failed posts can be edited.');
+        }
+
+        $files = $request->mediaFiles();
+        $options = $post->options ?? [];
+        $captions = collect($request->input('captions', []))
+            ->only(array_map(fn (Platform $platform) => $platform->value, Platform::cases()))
+            ->map(fn ($caption) => trim((string) $caption))
+            ->filter()
+            ->all();
+
+        $options['captions'] = $captions;
+        $options['music_url'] = $request->input('music_url');
+        $options['location_id'] = $request->input('location_id');
+        $options['youtube'] = array_filter([
+            ...($options['youtube'] ?? []),
+            'tags' => collect(explode(',', (string) $request->input('youtube_tags')))->map(fn ($tag) => trim($tag))->filter()->unique()->values()->all(),
+            'privacy' => $request->input('youtube_privacy'),
+            'format' => $request->input('youtube_format'),
+        ], fn ($value) => $value !== null && $value !== '' && $value !== []);
+
+        // The YouTube video made from photos must be made again with the new settings.
+        if (filled($options['youtube_video_path'] ?? null)) {
+            Storage::disk('public')->delete($options['youtube_video_path']);
+            unset($options['youtube_video_path']);
+        }
+
+        $attributes = ['title' => $request->input('title'), 'caption' => $request->input('caption')];
+
+        if ($files !== []) {
+            $post->deleteMediaFiles();
+            $paths = array_map(fn ($file) => $file->store('media', 'public'), $files);
+            $isVideo = str_starts_with((string) $files[0]->getMimeType(), 'video/');
+            unset($options['gallery']);
+
+            if (count($paths) > 1) {
+                $options['gallery'] = $paths;
+            }
+
+            $attributes += [
+                'media_path' => $paths[0],
+                'media_type' => $isVideo ? Post::MEDIA_VIDEO : Post::MEDIA_PHOTO,
+                'media_mime' => $files[0]->getMimeType(),
+                'thumbnail_path' => null,
+            ];
+        }
+
+        $post->update([...$attributes, 'options' => array_filter($options, fn ($value) => $value !== null && $value !== '' && $value !== [])]);
+
+        if ($request->has('accounts') && $post->canChangeAccounts()) {
+            $selected = array_map('intval', $request->input('accounts'));
+            $post->targets()->whereNotIn('social_account_id', $selected)->delete();
+
+            foreach (array_diff($selected, $post->targets()->pluck('social_account_id')->all()) as $accountId) {
+                $post->targets()->create(['social_account_id' => $accountId, 'status' => TargetStatus::Pending]);
+            }
+        }
+
+        return $this->applyTiming($request, $post->fresh(), $dispatcher);
+    }
+
+    private function applyTiming(UpdatePostRequest $request, Post $post, PostDispatcher $dispatcher): RedirectResponse
+    {
+        $when = $request->input('when');
+
+        if ($when === 'keep') {
+            return redirect()->route('posts.show', $post)->with('success', 'Changes saved.');
+        }
+
+        // Failed accounts get another try with the edited content.
+        $post->targets()->where('status', TargetStatus::Failed)->update(['status' => TargetStatus::Pending, 'error' => null, 'state' => null]);
+
+        $scheduledAt = $when === 'schedule'
+            ? Carbon::parse($request->input('scheduled_at'), config('app.display_timezone'))->utc()
+            : null;
+        $needsDownload = filled($post->option('import_url')) && ! $post->hasMedia() && $post->videoDownload !== null;
+
+        if ($needsDownload) {
+            $post->videoDownload->update(['status' => VideoDownload::STATUS_QUEUED, 'error' => null]);
+            $post->update(['status' => PostStatus::Preparing, 'scheduled_at' => $scheduledAt]);
+            PrepareImportedVideo::dispatch($post);
+        } elseif ($scheduledAt !== null) {
+            $post->update(['status' => PostStatus::Scheduled, 'scheduled_at' => $scheduledAt]);
+        } else {
+            $post->update(['status' => PostStatus::Publishing, 'scheduled_at' => null]);
+            $dispatcher->dispatch($post);
+        }
+
+        return redirect()->route('posts.show', $post)->with('success', $scheduledAt !== null ? 'Changes saved and the post is scheduled.' : 'Changes saved. Publishing now.');
     }
 
     /**

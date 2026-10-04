@@ -536,3 +536,11 @@ if (bulkBar) {
     });
     items.forEach((item) => item.addEventListener('change', refreshBulkBar));
 }
+
+const editSchedule = document.querySelector('[data-edit-schedule]');
+
+if (editSchedule) {
+    document.querySelectorAll('[data-edit-when]').forEach((radio) =>
+        radio.addEventListener('change', () => editSchedule.classList.toggle('hidden', radio.value !== 'schedule' || !radio.checked)),
+    );
+}

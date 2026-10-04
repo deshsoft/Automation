@@ -126,6 +126,12 @@
                                     <x-local-time :time="$post->scheduled_at ?? $post->created_at" />
                                 </td>
                                 <td class="px-3 py-3 text-right sm:px-5">
+                                    <div class="flex items-center justify-end gap-1">
+                                    @if ($post->isEditable())
+                                        <a href="{{ route('posts.edit', $post) }}" class="rounded-md p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600" title="Edit" aria-label="Edit post {{ $post->id }}">
+                                            <x-icon name="create" class="size-4" />
+                                        </a>
+                                    @endif
                                     @unless ($post->isBusy())
                                         <form method="POST" action="{{ route('posts.bulk-destroy') }}"
                                               data-confirm="Delete this post from the app? It stays on the social networks." onsubmit="return confirm(this.dataset.confirm)">
@@ -136,6 +142,7 @@
                                             </button>
                                         </form>
                                     @endunless
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach

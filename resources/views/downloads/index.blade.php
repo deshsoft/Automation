@@ -1,6 +1,6 @@
 <x-layout title="Download video" :refresh="$isWorking">
     <p class="mb-6 text-sm text-slate-600">
-        Paste YouTube or Facebook video links (one per line). The videos are saved on the server, then you download them here.
+        Paste YouTube or Facebook links (one per line). Videos, and the photos of Facebook photo posts, are saved on the server, then you download them here.
         Only download videos that you own or have permission to use.
     </p>
 
@@ -29,7 +29,7 @@
             <textarea id="urls" name="urls" rows="3" required
                       placeholder="https://www.youtube.com/watch?v=...&#10;https://www.facebook.com/watch/?v=..."
                       class="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:outline-none">{{ is_array(old('urls')) ? implode("\n", old('urls')) : old('urls') }}</textarea>
-            <p class="mt-1 text-xs text-slate-500">Up to 10 links. Facebook: public videos and Reels. YouTube: videos and Shorts.</p>
+            <p class="mt-1 text-xs text-slate-500">Up to 10 links. Facebook: public videos, Reels and photo posts (all photos from your connected Pages, otherwise the first photo; several photos come as a ZIP). YouTube: videos and Shorts.</p>
         </div>
 
         <div class="flex flex-wrap items-end gap-4">
