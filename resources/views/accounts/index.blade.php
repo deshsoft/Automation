@@ -26,19 +26,20 @@
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-3">
                                     @if ($account->avatar_url)
-                                        <img src="{{ $account->avatar_url }}" alt="" class="size-8 rounded-full">
+                                        <img src="{{ $account->avatar_url }}" alt="" class="size-8 shrink-0 rounded-full">
                                     @else
-                                        <div class="size-8 rounded-full bg-gray-200"></div>
+                                        <div class="size-8 shrink-0 rounded-full bg-gray-200"></div>
                                     @endif
-                                    <div>
+                                    <div class="min-w-0">
                                         <div class="font-medium">{{ $account->name }}</div>
                                         @if ($account->username)
-                                            <div class="text-gray-500">{{ $account->username }}</div>
+                                            <div class="truncate text-gray-500">{{ $account->username }}</div>
                                         @endif
+                                        <div class="text-xs text-gray-500 sm:hidden">{{ $account->platform->label() }}</div>
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-gray-600">{{ $account->platform->label() }}</td>
+                            <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $account->platform->label() }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <form method="POST" action="{{ route('accounts.update', $account) }}" class="inline">
                                     @csrf @method('PATCH')

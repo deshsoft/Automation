@@ -48,6 +48,15 @@
                 @endforeach
 
                 <div class="px-3 pt-6 pb-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">Admin</div>
+                @php($isSettingsActive = request()->routeIs('settings.*'))
+                <a href="{{ route('settings.edit') }}" @class([
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
+                    'bg-slate-800 text-white' => $isSettingsActive,
+                    'hover:bg-slate-800/60 hover:text-white' => ! $isSettingsActive,
+                ])>
+                    <x-icon name="sliders" :class="$isSettingsActive ? 'size-5 text-indigo-400' : 'size-5'" />
+                    Settings
+                </a>
                 @php($isSystemActive = request()->routeIs('system.*'))
                 <a href="{{ route('system.show') }}" @class([
                     'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',

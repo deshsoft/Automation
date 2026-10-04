@@ -48,7 +48,7 @@
 
     @php($facebookLinks = $post->targets->filter(fn ($target) => $target->permalink && $target->socialAccount->platform === \App\Enums\Platform::Facebook)->pluck('permalink')->values())
     @if ($facebookLinks->isNotEmpty())
-        <div class="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+        <div class="mb-6 flex flex-col gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center">
             <div class="min-w-0 flex-1 text-sm text-blue-900">
                 <div class="font-semibold">🏷️ Tag yourself on these posts</div>
                 <div class="mt-1 text-blue-800">
@@ -69,7 +69,7 @@
         <strong>Always allow pop-ups from this site</strong>, then click the button again. You can also use the <strong>View post</strong> links below.
     </div>
 
-    <div class="grid gap-6 md:grid-cols-3">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
         <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-6 md:col-span-1">
             @if ($post->hasMedia())
                 @if ($post->isVideo())

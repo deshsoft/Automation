@@ -153,4 +153,62 @@ class PostManagementTest extends TestCase
 
         $this->assertDatabaseCount('jobs', 1);
     }
+
+    public function test_rows_per_page_can_be_changed(): void
+    {
+        $user = User::factory()->create();
+        Post::factory()->for($user)->count(12)->create();
+
+        $this->actingAs($user)->get(route('posts.index', ['per_page' => 10]))
+            ->assertViewHas('posts', fn ($posts) => $posts->count() === 10 && $posts->total() === 12)
+            ->assertSee('Showing 1–10 of 12');
+
+        $this->actingAs($user)->get(route('posts.index', ['per_page' => 7]))
+            ->assertViewHas('posts', fn ($posts) => $posts->perPage() === 20);
+    }
+
+    public function test_posts_can_be_filtered_by_platform(): void
+    {
+        $youtube = SocialAccount::factory()->youtube()->create();
+        $facebook = SocialAccount::factory()->for($youtube->user)->facebook()->create();
+        $videoPost = Post::factory()->for($youtube->user)->create(['caption' => 'Only on YouTube']);
+        PostTarget::factory()->forPostAndAccount($videoPost, $youtube)->create();
+        $pagePost = Post::factory()->for($youtube->user)->create(['caption' => 'Only on Facebook']);
+        PostTarget::factory()->forPostAndAccount($pagePost, $facebook)->create();
+
+        $this->actingAs($youtube->user)->get(route('posts.index', ['platform' => 'youtube']))
+            ->assertSee('Only on YouTube')
+            ->assertDontSee('Only on Facebook');
+    }
+
+    public function test_search_also_finds_links(): void
+    {
+        $user = User::factory()->create();
+        Post::factory()->for($user)->create(['caption' => null, 'options' => ['link' => 'https://www.facebook.com/share/v/ABC123/']]);
+        Post::factory()->for($user)->create(['caption' => 'Unrelated']);
+
+        $this->actingAs($user)->get(route('posts.index', ['search' => 'ABC123']))
+            ->assertViewHas('posts', fn ($posts) => $posts->total() === 1);
+    }
+
+    public function test_selected_posts_can_be_deleted_together(): void
+    {
+        $user = User::factory()->create();
+        [$first, $second] = Post::factory()->for($user)->count(2)->create(['status' => PostStatus::Published])->all();
+        $busy = Post::factory()->for($user)->create(['status' => PostStatus::Publishing]);
+        $someoneElses = Post::factory()->create(['status' => PostStatus::Published]);
+
+        $this->actingAs($user)->post(route('posts.bulk-destroy'), ['posts' => [$first->id, $second->id, $busy->id, $someoneElses->id]])
+            ->assertSessionHas('success', 'Deleted 2 post(s). Skipped 1 that are publishing right now.');
+
+        $this->assertModelMissing($first);
+        $this->assertModelMissing($second);
+        $this->assertModelExists($busy);
+        $this->assertModelExists($someoneElses);
+    }
+
+    public function test_bulk_delete_needs_a_selection(): void
+    {
+        $this->actingAs(User::factory()->create())->post(route('posts.bulk-destroy'), [])->assertSessionHasErrors('posts');
+    }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LinkPreviewController;
 use App\Http\Controllers\LiveStreamController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SocialAccountController;
 use App\Http\Controllers\SystemController;
 use App\Http\Controllers\VideoDownloadController;
@@ -34,6 +35,10 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('posts', PostController::class)->only(['index', 'create', 'store', 'show', 'destroy']);
     Route::get('link-preview', LinkPreviewController::class)->middleware('throttle:30,1')->name('link-preview');
+    Route::post('posts/bulk-delete', [PostController::class, 'bulkDestroy'])->name('posts.bulk-destroy');
+    Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
+    Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
+    Route::post('settings/clean-up', [SettingsController::class, 'cleanUp'])->name('settings.clean-up');
     Route::post('posts/{post}/retry', [PostController::class, 'retry'])->name('posts.retry');
 
     Route::get('live', [LiveStreamController::class, 'index'])->name('live.index');

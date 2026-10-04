@@ -6,7 +6,7 @@
         </div>
     @else
         <form method="POST" action="{{ route('posts.store') }}" enctype="multipart/form-data" data-composer
-              class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+              class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
             @csrf
 
             <div class="min-w-0 space-y-5">
@@ -32,7 +32,7 @@
                     @foreach ($accounts->groupBy(fn ($account) => $account->platform->value) as $platformValue => $platformAccounts)
                         <div class="mb-4 last:mb-0">
                             <div class="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">{{ $platformAccounts->first()->platform->label() }}</div>
-                            <div class="grid gap-2 sm:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 @foreach ($platformAccounts as $account)
                                     <label class="flex cursor-pointer items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50 has-checked:border-indigo-400 has-checked:bg-indigo-50">
                                         <input type="checkbox" name="accounts[]" value="{{ $account->id }}" class="rounded"
@@ -53,7 +53,7 @@
                 @php($contentMode = old('source_url') ? 'from_link' : 'upload')
                 <section class="rounded-lg border border-gray-200 bg-white p-5">
                     <h2 class="mb-3 font-semibold">What do you want to post?</h2>
-                    <div class="grid gap-2 sm:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         @foreach ([
                             'upload' => ['📁', 'Upload photo/video', 'From this computer or phone, or text only'],
                             'from_link' => ['🔗', 'From a link', 'A Facebook or YouTube link: share it or repost the video'],
@@ -104,7 +104,7 @@
                 {{-- Media --}}
                 <section data-mode-section="upload" class="rounded-lg border border-gray-200 bg-white p-5">
                     <h2 class="mb-3 font-semibold">Photo or video</h2>
-                    <label data-dropzone class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40">
+                    <label data-dropzone class="relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40">
                         <svg class="size-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/></svg>
                         <span class="text-sm font-medium text-indigo-600">Click to choose, or drag a file here</span>
                         <span class="text-xs text-gray-500">JPG/PNG photo or MP4/MOV video · max {{ config('filesystems.max_upload_mb') }} MB</span>

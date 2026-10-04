@@ -27,7 +27,7 @@
             </div>
         </section>
 
-        <section id="features" class="mt-20 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section id="features" class="mt-20 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             @foreach ([
                 ['create', 'One post, many accounts', 'Choose the Pages and channels, write the caption, attach a photo or video and publish everywhere in one click.'],
                 ['clock', 'Schedule ahead', 'Pick a date and time. Posts go out automatically, with a small gap between Pages.'],

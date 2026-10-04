@@ -33,7 +33,7 @@
         <x-stat-card label="Accounts" :value="number_format($stats['accounts'])" icon="accounts" tone="slate" hint="Active Pages and channels" />
     </div>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-3">
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         {{-- Activity chart --}}
         @php($chartMax = max(1, collect($chart)->max(fn ($day) => $day['published'] + $day['failed'])))
         @php($gridStep = max(1, (int) ceil($chartMax / 4)))
@@ -134,7 +134,7 @@
         </section>
     </div>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-3">
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         {{-- Recent posts --}}
         <section class="rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2">
             <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">

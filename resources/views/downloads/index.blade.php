@@ -82,7 +82,7 @@
                         @endif
                     </div>
 
-                    <div class="flex shrink-0 items-center gap-2">
+                    <div class="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
                         @switch($download->status)
                             @case(\App\Models\VideoDownload::STATUS_COMPLETED)
                                 @if ($download->hasFile())

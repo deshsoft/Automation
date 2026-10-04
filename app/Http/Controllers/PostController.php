@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\Platform;
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
 use App\Http\Requests\StorePostRequest;
@@ -29,10 +30,17 @@ class PostController extends Controller
         'failed' => [PostStatus::Failed, PostStatus::PartiallyFailed],
     ];
 
+    /**
+     * @var list<int>
+     */
+    private const PER_PAGE_OPTIONS = [10, 20, 50, 100];
+
     public function index(Request $request): View
     {
         $filter = array_key_exists((string) $request->query('status'), self::STATUS_FILTERS) ? (string) $request->query('status') : null;
         $search = trim((string) $request->query('search'));
+        $perPage = in_array((int) $request->query('per_page'), self::PER_PAGE_OPTIONS, true) ? (int) $request->query('per_page') : 20;
+        $platform = Platform::tryFrom((string) $request->query('platform'));
 
         $posts = $request->user()->posts()
             ->with('targets.socialAccount:id,platform')
@@ -42,11 +50,13 @@ class PostController extends Controller
                 'targets as failed_targets_count' => fn ($query) => $query->where('status', TargetStatus::Failed),
             ])
             ->when($filter, fn ($query) => $query->whereIn('status', self::STATUS_FILTERS[$filter]))
+            ->when($platform, fn ($query) => $query->whereHas('targets.socialAccount', fn ($query) => $query->where('platform', $platform)))
             ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->where('caption', 'like', '%'.$search.'%')
-                ->orWhere('title', 'like', '%'.$search.'%')))
+                ->orWhere('title', 'like', '%'.$search.'%')
+                ->orWhere('options', 'like', '%'.$search.'%')))
             ->latest()
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         $statusCounts = $request->user()->posts()
@@ -58,6 +68,8 @@ class PostController extends Controller
             'posts' => $posts,
             'filter' => $filter,
             'search' => $search,
+            'perPage' => $perPage,
+            'platform' => $platform,
             'tabCounts' => [
                 null => $statusCounts->sum(),
                 ...collect(self::STATUS_FILTERS)->map(fn (array $statuses) => collect($statuses)->sum(fn (PostStatus $status) => $statusCounts[$status->value] ?? 0))->all(),
@@ -152,6 +164,35 @@ class PostController extends Controller
     /**
      * Cancel a scheduled post, or delete a finished one.
      */
+    /**
+     * Delete several posts from the list at once. Posts that are being
+     * downloaded or published right now are skipped.
+     */
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'posts' => ['required', 'array', 'min:1', 'max:100'],
+            'posts.*' => ['integer'],
+        ], ['posts.required' => 'Select at least one post.']);
+
+        $deleted = 0;
+        $skipped = 0;
+
+        $request->user()->posts()->whereIn('id', $validated['posts'])->get()->each(function (Post $post) use (&$deleted, &$skipped) {
+            if ($post->isBusy()) {
+                $skipped++;
+
+                return;
+            }
+
+            $post->deleteMediaFiles();
+            $post->delete();
+            $deleted++;
+        });
+
+        return back()->with('success', "Deleted {$deleted} post(s).".($skipped > 0 ? " Skipped {$skipped} that are publishing right now." : ''));
+    }
+
     public function destroy(Post $post): RedirectResponse
     {
         Gate::authorize('delete', $post);

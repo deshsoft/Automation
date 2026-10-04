@@ -16,6 +16,8 @@ Schedule::command('queue:work --stop-when-empty --max-time=50 --timeout=900')
 
 Schedule::command('posts:prune-media')->daily();
 
+Schedule::command('posts:prune')->daily();
+
 Schedule::command('downloads:prune')->hourly();
 
 /*

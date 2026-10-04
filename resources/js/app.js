@@ -498,3 +498,28 @@ if (sidebar) {
     document.querySelector('[data-sidebar-close]')?.addEventListener('click', () => toggleSidebar(false));
     backdrop.addEventListener('click', () => toggleSidebar(false));
 }
+
+document.querySelectorAll('[data-auto-submit]').forEach((select) => {
+    select.addEventListener('change', () => select.form.submit());
+});
+
+const bulkBar = document.querySelector('[data-bulk-bar]');
+
+if (bulkBar) {
+    const items = [...document.querySelectorAll('[data-bulk-item]:not(:disabled)')];
+    const selectAllPosts = document.querySelector('[data-bulk-all]');
+
+    const refreshBulkBar = () => {
+        const count = items.filter((item) => item.checked).length;
+        bulkBar.classList.toggle('hidden', count === 0);
+        bulkBar.classList.toggle('flex', count > 0);
+        bulkBar.querySelector('[data-bulk-count]').textContent = count;
+        selectAllPosts.checked = count > 0 && count === items.length;
+    };
+
+    selectAllPosts.addEventListener('change', () => {
+        items.forEach((item) => (item.checked = selectAllPosts.checked));
+        refreshBulkBar();
+    });
+    items.forEach((item) => item.addEventListener('change', refreshBulkBar));
+}

@@ -65,7 +65,7 @@
                 @endif
 
                 @if ($liveStream->isLive() && $target->status === \App\Models\LiveStreamTarget::STATUS_READY)
-                    <dl class="grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
+                    <dl class="grid grid-cols-1 gap-2 text-sm sm:grid-cols-[8rem_1fr]">
                         <dt class="text-gray-500">Server</dt>
                         <dd class="flex items-center gap-2">
                             <code class="min-w-0 flex-1 truncate rounded bg-gray-100 px-2 py-1">{{ $target->server() }}</code>
@@ -91,7 +91,7 @@
     </div>
 
     @if ($liveStream->isLive() && $readyTargets->isNotEmpty())
-        <div class="mt-8 grid gap-4 md:grid-cols-2">
+        <div class="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
             <section class="rounded-lg border border-gray-200 bg-white p-5 text-sm">
                 <h2 class="mb-2 font-semibold">💻 From a computer (OBS Studio)</h2>
                 <ol class="list-inside list-decimal space-y-1 text-gray-700">

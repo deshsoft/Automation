@@ -24,7 +24,7 @@
 
             <section class="rounded-lg border border-gray-200 bg-white p-5">
                 <h2 class="mb-3 font-semibold">Go live on</h2>
-                <div class="grid gap-2 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     @foreach ($pages as $page)
                         <label class="flex cursor-pointer items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50 has-checked:border-indigo-400 has-checked:bg-indigo-50">
                             <input type="checkbox" name="accounts[]" value="{{ $page->id }}" class="rounded" data-live-page data-name="{{ $page->name }}" @checked(in_array($page->id, old('accounts', [])))>
