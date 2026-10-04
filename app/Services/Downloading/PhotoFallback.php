@@ -25,6 +25,17 @@ class PhotoFallback
     private const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
     /**
+     * Video encoder settings, tried in order until one works on this server.
+     *
+     * @var list<list<string>>
+     */
+    private const ENCODERS = [
+        ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-x264-params', 'threads=2:lookahead-threads=1'],
+        ['-c:v', 'libx264', '-preset', 'ultrafast', '-x264-params', 'threads=1:lookahead-threads=1:sliced-threads=0'],
+        ['-c:v', 'mpeg4', '-q:v', '3'],
+    ];
+
+    /**
      * Why the last importPhoto() or makeVideo() call returned null.
      */
     public ?string $lastError = null;
@@ -85,30 +96,37 @@ class PhotoFallback
 
         $videoPath = 'media/import-'.$post->id.'-'.Str::random(8).'.mp4';
         File::ensureDirectoryExists(dirname(Storage::disk('public')->path($videoPath)));
+        $errors = [];
 
-        $result = Process::timeout(300)->env(VideoDownloader::environment())->run([
-            $ffmpeg, '-y', '-loglevel', 'error',
-            '-loop', '1', '-i', Storage::disk('public')->path($photoPath),
-            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-            '-t', (string) self::VIDEO_SECONDS,
-            // Blur a small copy for the background (much less CPU on shared hosting).
-            '-filter_complex', '[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=4:1,scale=1080:1920[bg];'
-                .'[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];'
-                .'[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]',
-            '-map', '[v]', '-map', '1:a',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-r', '25',
-            '-c:a', 'aac', '-shortest', '-movflags', '+faststart',
-            Storage::disk('public')->path($videoPath),
-        ]);
+        // Shared hosts limit how many threads an account may start, and libx264
+        // starts one per CPU core by default. Try it with few threads first,
+        // then fall back to ffmpeg's built-in MPEG-4 encoder (also accepted by YouTube).
+        foreach (self::ENCODERS as $encoder) {
+            $result = Process::timeout(300)->env(VideoDownloader::environment())->run([
+                $ffmpeg, '-y', '-loglevel', 'error', '-threads', '1', '-filter_threads', '1',
+                '-loop', '1', '-i', Storage::disk('public')->path($photoPath),
+                '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                '-t', (string) self::VIDEO_SECONDS,
+                // Blur a small copy for the background (much less CPU on shared hosting).
+                '-filter_complex', '[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=4:1,scale=1080:1920[bg];'
+                    .'[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];'
+                    .'[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]',
+                '-map', '[v]', '-map', '1:a', '-r', '25',
+                ...$encoder,
+                '-c:a', 'aac', '-shortest', '-movflags', '+faststart',
+                Storage::disk('public')->path($videoPath),
+            ]);
 
-        if ($result->failed() || ! Storage::disk('public')->exists($videoPath)) {
+            if ($result->successful() && Storage::disk('public')->exists($videoPath) && Storage::disk('public')->size($videoPath) > 0) {
+                return $videoPath;
+            }
+
             Storage::disk('public')->delete($videoPath);
             $output = trim($result->errorOutput() ?: $result->output());
-
-            return $this->fail('ffmpeg could not make the video ('.($output !== '' ? mb_substr($output, -300) : 'exit code '.$result->exitCode().', the host may have stopped it').').');
+            $errors[] = $encoder[1].': '.($output !== '' ? mb_substr($output, -200) : 'exit code '.$result->exitCode().', the host may have stopped it');
         }
 
-        return $videoPath;
+        return $this->fail('ffmpeg could not make the video ('.implode(' | ', $errors).').');
     }
 
     private function fail(string $reason): null
