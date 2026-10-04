@@ -56,7 +56,15 @@ class LinkPreviewer
             $resolved = $this->preview($url)['url'] ?? $url;
         }
 
+        // Facebook may answer with its login page; the real post is in "next".
+        $resolved = $this->unwrapFacebookLogin($resolved);
         $resolvedPath = rawurldecode((string) parse_url($resolved, PHP_URL_PATH));
+        parse_str((string) parse_url($resolved, PHP_URL_QUERY), $query);
+
+        // /story.php?story_fbid=<post>&id=<page>  ->  /<page>/posts/<post>
+        if (in_array($resolvedPath, ['/story.php', '/permalink.php'], true) && ctype_digit((string) ($query['story_fbid'] ?? '')) && ctype_digit((string) ($query['id'] ?? ''))) {
+            return 'https://www.facebook.com/'.$query['id'].'/posts/'.$query['story_fbid'];
+        }
 
         // /Page/posts/<optional text slug>/<id>/  ->  /Page/posts/<id>
         if (preg_match('#^/([^/]+)/posts/(?:[^/]*/)?(\w+)/?$#u', $resolvedPath, $matches) === 1) {
@@ -73,6 +81,27 @@ class LinkPreviewer
         }
 
         return (string) preg_replace('#^https?://(web|m)\.facebook\.com#', 'https://www.facebook.com', $resolved);
+    }
+
+    /**
+     * Whether Facebook answered with its login page instead of the post.
+     */
+    public static function isFacebookLogin(string $url): bool
+    {
+        return str_contains((string) parse_url($url, PHP_URL_HOST), 'facebook.com')
+            && str_starts_with((string) parse_url($url, PHP_URL_PATH), '/login');
+    }
+
+    private function unwrapFacebookLogin(string $url): string
+    {
+        if (! self::isFacebookLogin($url)) {
+            return $url;
+        }
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $next = (string) ($query['next'] ?? '');
+
+        return str_starts_with($next, 'https://') ? $next : $url;
     }
 
     /**
@@ -118,6 +147,11 @@ class LinkPreviewer
         }
 
         $tags = $this->metaTags(mb_substr($response->body(), 0, 1_000_000));
+
+        if (self::isFacebookLogin($url)) {
+            // Facebook's login wall: no data about the post itself, only where it is.
+            return ['url' => $url, 'site_name' => 'Facebook', 'title' => null, 'description' => null, 'image' => null];
+        }
 
         $preview = [
             'url' => $tags['og:url'] ?? $url,

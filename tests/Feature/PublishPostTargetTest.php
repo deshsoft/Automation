@@ -155,6 +155,14 @@ class PublishPostTargetTest extends TestCase
             'https://www.facebook.com/SelimPage/videos/777',
             $previewer->canonicalFacebookUrl('https://m.facebook.com/SelimPage/videos/some-title/777/?mibextid=xyz'),
         );
+        $this->assertSame(
+            'https://www.facebook.com/61550000000001/posts/122113169931477750',
+            $previewer->canonicalFacebookUrl('https://www.facebook.com/story.php?story_fbid=122113169931477750&id=61550000000001'),
+        );
+        $this->assertSame(
+            'https://www.facebook.com/61550000000001/posts/122113169931477750',
+            $previewer->canonicalFacebookUrl('https://www.facebook.com/login/?next=https%3A%2F%2Fwww.facebook.com%2Fstory.php%3Fstory_fbid%3D122113169931477750%26id%3D61550000000001'),
+        );
         $this->assertSame('https://example.com/news', $previewer->canonicalFacebookUrl('https://example.com/news'));
         Http::assertNothingSent();
     }

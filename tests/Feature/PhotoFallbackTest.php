@@ -206,4 +206,41 @@ class PhotoFallbackTest extends TestCase
 
         return (string) ob_get_clean();
     }
+
+    public function test_photos_are_read_from_a_connected_page_even_behind_the_login_wall(): void
+    {
+        $this->app->instance(LinkPreviewer::class, new LinkPreviewer(fn () => ['157.240.1.35']));
+        $page = SocialAccount::factory()->facebook()->create(['platform_account_id' => '61550000000001', 'access_token' => 'page-token']);
+        Http::fake([
+            'www.facebook.com/share/p/xyz*' => Http::response('', 302, [
+                'Location' => 'https://www.facebook.com/login/?next=https%3A%2F%2Fwww.facebook.com%2Fstory.php%3Fstory_fbid%3D122113169931477750%26id%3D61550000000001',
+            ]),
+            'www.facebook.com/login/*' => Http::response('<meta property="og:title" content="Log in to Facebook">'),
+            'graph.facebook.com/v24.0/61550000000001_122113169931477750*' => Http::response(['attachments' => ['data' => [[
+                'subattachments' => ['data' => [
+                    ['media' => ['image' => ['src' => 'https://scontent.xx.fbcdn.net/one.jpg']]],
+                    ['media' => ['image' => ['src' => 'https://scontent.xx.fbcdn.net/two.jpg']]],
+                ]],
+            ]]]]),
+            'scontent.xx.fbcdn.net/*' => Http::response($this->png()),
+        ]);
+
+        $paths = app(PhotoFallback::class)->importPhotos('https://www.facebook.com/share/p/xyz/', Post::factory()->for($page->user)->create());
+
+        $this->assertCount(2, $paths);
+    }
+
+    public function test_login_wall_gives_a_clear_explanation(): void
+    {
+        [$post] = $this->photoLinkPost();
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('download')
+            ->andThrow(new DownloadException('Unsupported URL: https://www.facebook.com/login/?next=https%3A%2F%2Fwww.facebook.com%2Fstory.php')));
+        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('importPhotos')->andReturn([]));
+
+        $this->runJob($post);
+
+        $error = $post->targets()->first()->error;
+        $this->assertStringContainsString('Facebook asked for a login to show this post', $error);
+        $this->assertStringContainsString('connect it in Accounts', $error);
+    }
 }

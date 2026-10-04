@@ -51,7 +51,10 @@ class PrepareImportedVideo implements ShouldQueue
             // Photo posts have no video: publish their photo instead.
             if (! $this->usePhotoInstead($post, $dispatcher)) {
                 $reason = app(PhotoFallback::class)->lastError;
-                $this->failed(new DownloadException($exception->getMessage().($reason ? ' Tried the photo instead: '.$reason : '')));
+                $this->failed(new DownloadException(str_contains($exception->getMessage(), 'facebook.com/login')
+                    ? 'Facebook asked for a login to show this post, so the server cannot read it (the post is not Public, or Facebook hides this Page from servers). '
+                        .'If it is your Page, connect it in Accounts and try again; otherwise save the photos/video and upload them with "Upload photo/video".'
+                    : $exception->getMessage().($reason ? ' Tried the photo instead: '.$reason : '')));
             }
 
             return;
