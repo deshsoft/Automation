@@ -62,6 +62,7 @@ class PhotoFallbackTest extends TestCase
         [$post, $youtube, $tiktok] = $this->photoLinkPost();
         $this->noVideoInLink();
         $this->mock(PhotoFallback::class, function (MockInterface $mock) {
+            $mock->lastError = 'ffmpeg is not installed. Open System → "Install video downloader (2/3: ffmpeg)".';
             $mock->shouldReceive('importPhoto')->andReturn('media/photo.jpg');
             $mock->shouldReceive('makeVideo')->andReturn(null);
         });
@@ -152,5 +153,31 @@ class PhotoFallbackTest extends TestCase
     private function runJob(Post $post): void
     {
         (new PrepareImportedVideo($post))->handle(app(VideoDownloader::class), app(PostDispatcher::class));
+    }
+
+    public function test_failure_explains_why_the_photo_could_not_be_used(): void
+    {
+        $this->app->instance(LinkPreviewer::class, new LinkPreviewer(fn () => ['157.240.1.35']));
+        Http::fake([
+            'www.facebook.com/*' => Http::response('<meta property="og:image" content="https://lookaside.fbsbx.com/photo.jpg">'),
+            'lookaside.fbsbx.com/*' => Http::failedConnection(),
+        ]);
+        [$post] = $this->photoLinkPost();
+        $this->noVideoInLink();
+
+        $this->runJob($post);
+
+        $error = $post->targets()->first()->error;
+        $this->assertStringContainsString('Tried the photo instead: could not download the photo from lookaside.fbsbx.com', $error);
+        $this->assertStringContainsString('Outgoing Connections', $error);
+    }
+
+    public function test_missing_ffmpeg_is_reported(): void
+    {
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('ffmpeg')->andReturn(null));
+        $fallback = app(PhotoFallback::class);
+
+        $this->assertNull($fallback->makeVideo('media/photo.jpg', Post::factory()->create()));
+        $this->assertStringContainsString('ffmpeg is not installed', $fallback->lastError);
     }
 }

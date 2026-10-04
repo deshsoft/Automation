@@ -50,7 +50,8 @@ class PrepareImportedVideo implements ShouldQueue
         } catch (DownloadException $exception) {
             // Photo posts have no video: publish their photo instead.
             if (! $this->usePhotoInstead($post, $dispatcher)) {
-                $this->failed($exception);
+                $reason = app(PhotoFallback::class)->lastError;
+                $this->failed(new DownloadException($exception->getMessage().($reason ? ' Tried the photo instead: '.$reason : '')));
             }
 
             return;
@@ -101,7 +102,7 @@ class PrepareImportedVideo implements ShouldQueue
             } else {
                 $youtubeTargets->update([
                     'status' => TargetStatus::Failed,
-                    'error' => 'This link has a photo, not a video. YouTube only accepts videos, and ffmpeg is needed to turn the photo into one: open System → "Install video downloader (2/3: ffmpeg)", then Retry.',
+                    'error' => mb_substr('This link has a photo, not a video, and the video for YouTube could not be made: '.$fallback->lastError, 0, 2000),
                 ]);
             }
         }

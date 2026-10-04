@@ -91,7 +91,8 @@ class SystemPageTest extends TestCase
     public function test_downloader_install_is_offered(): void
     {
         $this->unlocked()->get(route('system.show'))->assertSee('Install video downloader (1/3: yt-dlp)')
-            ->assertSee('Video downloader (yt-dlp)');
+            ->assertSee('Video downloader (yt-dlp)')
+            ->assertSee('Test: make a YouTube video from a photo');
     }
 
     public function test_only_listed_actions_can_run(): void

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Downloading\PhotoFallback;
 use App\Services\SystemDiagnostics;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
@@ -13,7 +14,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One instance per job, so its lastError can be read after a failed call.
+        $this->app->singleton(PhotoFallback::class);
     }
 
     /**

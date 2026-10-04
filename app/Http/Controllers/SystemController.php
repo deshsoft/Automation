@@ -36,6 +36,7 @@ class SystemController extends Controller
         'install-downloader' => ['label' => 'Install video downloader (1/3: yt-dlp)', 'command' => 'downloads:install', 'parameters' => []],
         'install-ffmpeg' => ['label' => 'Install video downloader (2/3: ffmpeg for HD)', 'command' => 'downloads:install', 'parameters' => ['--ffmpeg' => true, '--without-ytdlp' => true]],
         'install-deno' => ['label' => 'Install video downloader (3/3: Deno for YouTube)', 'command' => 'downloads:install', 'parameters' => ['--deno' => true, '--without-ytdlp' => true]],
+        'test-photo-video' => ['label' => 'Test: make a YouTube video from a photo', 'command' => 'downloads:test-photo-video', 'parameters' => []],
     ];
 
     public function show(Request $request, SystemDiagnostics $diagnostics): View|RedirectResponse

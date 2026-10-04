@@ -24,6 +24,11 @@ class PhotoFallback
 
     private const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
+    /**
+     * Why the last importPhoto() or makeVideo() call returned null.
+     */
+    public ?string $lastError = null;
+
     public function __construct(private LinkPreviewer $previewer, private VideoDownloader $downloader) {}
 
     /**
@@ -31,29 +36,30 @@ class PhotoFallback
      */
     public function importPhoto(string $url, Post $post): ?string
     {
+        $this->lastError = null;
         $imageUrl = $this->previewer->preview($url)['image'] ?? null;
 
         if (! is_string($imageUrl) || ! str_starts_with($imageUrl, 'https://')) {
-            return null;
+            return $this->fail('no photo found in the link (the post may be private, or the server cannot open facebook.com).');
         }
 
         try {
             $response = Http::withHeaders(['User-Agent' => 'facebookexternalhit/1.1'])->connectTimeout(10)->timeout(60)->get($imageUrl);
-        } catch (Throwable) {
-            return null;
+        } catch (Throwable $exception) {
+            return $this->fail('could not download the photo from '.parse_url($imageUrl, PHP_URL_HOST).' ('.mb_substr($exception->getMessage(), 0, 120).'). Allow that host in cPanel → Outgoing Connections.');
         }
 
         $body = $response->successful() ? $response->body() : '';
 
         if ($body === '' || strlen($body) > self::MAX_IMAGE_BYTES || @getimagesizefromstring($body) === false) {
-            return null;
+            return $this->fail('the photo could not be read (HTTP '.$response->status().' from '.parse_url($imageUrl, PHP_URL_HOST).').');
         }
 
         // Instagram only accepts JPG, so always store a JPG.
         $image = @imagecreatefromstring($body);
 
         if ($image === false) {
-            return null;
+            return $this->fail('the photo format is not supported.');
         }
 
         $path = 'media/import-'.$post->id.'-'.Str::random(8).'.jpg';
@@ -70,10 +76,11 @@ class PhotoFallback
      */
     public function makeVideo(string $photoPath, Post $post): ?string
     {
+        $this->lastError = null;
         $ffmpeg = $this->downloader->ffmpeg();
 
         if ($ffmpeg === null) {
-            return null;
+            return $this->fail('ffmpeg is not installed. Open System → "Install video downloader (2/3: ffmpeg)".');
         }
 
         $videoPath = 'media/import-'.$post->id.'-'.Str::random(8).'.mp4';
@@ -84,21 +91,30 @@ class PhotoFallback
             '-loop', '1', '-i', Storage::disk('public')->path($photoPath),
             '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
             '-t', (string) self::VIDEO_SECONDS,
-            '-filter_complex', '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg];'
+            // Blur a small copy for the background (much less CPU on shared hosting).
+            '-filter_complex', '[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=4:1,scale=1080:1920[bg];'
                 .'[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];'
                 .'[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]',
             '-map', '[v]', '-map', '1:a',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-r', '30',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-r', '25',
             '-c:a', 'aac', '-shortest', '-movflags', '+faststart',
             Storage::disk('public')->path($videoPath),
         ]);
 
         if ($result->failed() || ! Storage::disk('public')->exists($videoPath)) {
             Storage::disk('public')->delete($videoPath);
+            $output = trim($result->errorOutput() ?: $result->output());
 
-            return null;
+            return $this->fail('ffmpeg could not make the video ('.($output !== '' ? mb_substr($output, -300) : 'exit code '.$result->exitCode().', the host may have stopped it').').');
         }
 
         return $videoPath;
+    }
+
+    private function fail(string $reason): null
+    {
+        $this->lastError = $reason;
+
+        return null;
     }
 }
