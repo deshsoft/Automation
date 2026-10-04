@@ -34,11 +34,12 @@ enum Platform: string
     }
 
     /**
-     * Whether this platform accepts photo posts (YouTube only accepts videos).
+     * Whether this platform accepts photo posts. YouTube gets a short video
+     * made from the photo instead.
      */
     public function acceptsPhotos(): bool
     {
-        return $this !== self::YouTube;
+        return true;
     }
 
     /**

@@ -154,7 +154,7 @@ class CreatePostTest extends TestCase
         ])->assertSessionHasErrors(['media' => 'Instagram only accepts JPG photos.']);
     }
 
-    public function test_youtube_rejects_photos(): void
+    public function test_youtube_accepts_photos_and_gets_a_video_made_from_them(): void
     {
         $channel = SocialAccount::factory()->for($this->user)->youtube()->create();
 
@@ -162,7 +162,7 @@ class CreatePostTest extends TestCase
             'accounts' => [$channel->id],
             'media' => UploadedFile::fake()->image('photo.jpg'),
             'stagger_seconds' => 0,
-        ])->assertSessionHasErrors('media');
+        ])->assertSessionHasNoErrors();
     }
 
     public function test_youtube_accepts_videos(): void

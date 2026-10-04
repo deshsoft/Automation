@@ -4,8 +4,10 @@ namespace App\Services\Publishing;
 
 use App\Enums\Platform;
 use App\Exceptions\PublishingException;
+use App\Models\Post;
 use App\Models\PostTarget;
 use App\Services\Connectors\GoogleConnector;
+use App\Services\Downloading\PhotoFallback;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -21,18 +23,14 @@ class YouTubePublisher implements Publisher
      */
     public const CHUNK_SIZE = 8 * 1024 * 1024;
 
-    public function __construct(private GoogleConnector $google) {}
+    public function __construct(private GoogleConnector $google, private PhotoFallback $photoFallback) {}
 
     public function publish(PostTarget $target): PublishResult
     {
         $post = $target->post;
 
-        // A photo post from a link gets a short video made for YouTube.
-        $generatedVideo = $post->option('youtube_video_path');
-
-        if (! $post->isVideo() && blank($generatedVideo)) {
-            throw new PublishingException('YouTube only accepts videos.');
-        }
+        // YouTube only takes videos, so a photo post gets a short video made from its photo.
+        $generatedVideo = $post->isVideo() ? null : $this->videoForPhoto($post);
 
         $path = $post->isVideo() ? $post->mediaLocalPath() : Storage::disk('public')->path((string) $generatedVideo);
         $mime = $post->isVideo() ? (string) $post->media_mime : 'video/mp4';
@@ -82,6 +80,34 @@ class YouTubePublisher implements Publisher
                 .PublishingException::extractMessage($response)
                 .' (custom thumbnails need a phone-verified channel: youtube.com/verify)']);
         }
+    }
+
+    /**
+     * The video made from the post's photo; made now if it does not exist yet
+     * (e.g. on Retry after ffmpeg was installed, or for an uploaded photo).
+     */
+    private function videoForPhoto(Post $post): string
+    {
+        $existing = $post->option('youtube_video_path');
+
+        if (filled($existing) && Storage::disk('public')->exists($existing)) {
+            return $existing;
+        }
+
+        if (! $post->isPhoto() || ! $post->hasMedia()) {
+            throw new PublishingException('YouTube only accepts videos, and this post has no photo to make one from.');
+        }
+
+        $videoPath = $this->photoFallback->makeVideo($post->media_path, $post);
+
+        if ($videoPath === null) {
+            throw new PublishingException('YouTube only accepts videos, and the video could not be made from the photo: '.$this->photoFallback->lastError);
+        }
+
+        $post->refresh();
+        $post->update(['options' => [...($post->options ?? []), 'youtube_video_path' => $videoPath]]);
+
+        return $videoPath;
     }
 
     private function startUploadSession(PostTarget $target, string $accessToken, int $fileSize, string $mime): string

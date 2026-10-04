@@ -180,4 +180,42 @@ class PhotoFallbackTest extends TestCase
         $this->assertNull($fallback->makeVideo('media/photo.jpg', Post::factory()->create()));
         $this->assertStringContainsString('ffmpeg is not installed', $fallback->lastError);
     }
+
+    public function test_retry_makes_the_missing_video_for_youtube_from_the_photo(): void
+    {
+        Storage::disk('public')->put('media/photo.jpg', 'jpeg');
+        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('makeVideo')->once()->andReturnUsing(function () {
+            Storage::disk('public')->put('media/made.mp4', 'mp4-bytes');
+
+            return 'media/made.mp4';
+        }));
+        Http::fake([
+            'www.googleapis.com/upload/youtube/v3/videos*' => Http::response([], 200, ['Location' => 'https://upload.example.test/s']),
+            'upload.example.test/s' => Http::response(['id' => 'yt-1'], 201),
+        ]);
+        $channel = SocialAccount::factory()->youtube()->create();
+        $post = Post::factory()->for($channel->user)->create(['media_path' => 'media/photo.jpg', 'media_type' => Post::MEDIA_PHOTO, 'media_mime' => 'image/jpeg']);
+        $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
+
+        (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
+
+        $this->assertSame(TargetStatus::Published, $target->fresh()->status);
+        $this->assertSame('media/made.mp4', $post->fresh()->option('youtube_video_path'));
+    }
+
+    public function test_youtube_shows_why_the_video_could_not_be_made(): void
+    {
+        $this->mock(PhotoFallback::class, function (MockInterface $mock) {
+            $mock->lastError = 'ffmpeg could not make the video (libx264: Error initializing output stream)';
+            $mock->shouldReceive('makeVideo')->andReturn(null);
+        });
+        $channel = SocialAccount::factory()->youtube()->create();
+        $post = Post::factory()->for($channel->user)->withPhoto()->create();
+        $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
+
+        (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
+
+        $this->assertSame(TargetStatus::Failed, $target->fresh()->status);
+        $this->assertStringContainsString('Error initializing output stream', $target->fresh()->error);
+    }
 }

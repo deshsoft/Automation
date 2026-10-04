@@ -275,7 +275,7 @@ function setUpComposer(form) {
         const messages = [];
 
         if (file && mediaKind === 'photo' && platforms.includes('youtube')) {
-            messages.push('YouTube only accepts videos.');
+            messages.push('YouTube gets a 15-second video made from this photo.');
         }
         if (file && file.type === 'image/png' && platforms.includes('instagram')) {
             messages.push('Instagram only accepts JPG photos.');
