@@ -12,6 +12,7 @@ use App\Models\PostTarget;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\VideoDownload;
+use App\Services\Downloading\MusicFetcher;
 use App\Services\Downloading\PhotoFallback;
 use App\Services\Downloading\VideoDownloader;
 use App\Services\LinkPreviewer;
@@ -34,93 +35,135 @@ class PhotoFallbackTest extends TestCase
 
         Storage::fake('public');
         Storage::fake('local');
+        config(['services.facebook.graph_version' => 'v24.0']);
     }
 
-    public function test_photo_link_publishes_the_photo_and_a_video_made_for_youtube(): void
+    public function test_photo_link_publishes_all_its_photos(): void
     {
         Queue::fake();
-        [$post, $youtube, $tiktok] = $this->photoLinkPost();
+        [$post] = $this->photoLinkPost();
         $this->noVideoInLink();
-        $this->mock(PhotoFallback::class, function (MockInterface $mock) {
-            $mock->shouldReceive('importPhoto')->andReturn('media/photo.jpg');
-            $mock->shouldReceive('makeVideo')->with('media/photo.jpg', \Mockery::any())->andReturn('media/photo-video.mp4');
-        });
+        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('importPhotos')->andReturn(['media/a.jpg', 'media/b.jpg']));
 
         $this->runJob($post);
 
         $post->refresh();
         $this->assertSame(PostStatus::Publishing, $post->status);
         $this->assertSame(Post::MEDIA_PHOTO, $post->media_type);
-        $this->assertSame('media/photo.jpg', $post->media_path);
-        $this->assertSame('media/photo-video.mp4', $post->option('youtube_video_path'));
+        $this->assertSame(['media/a.jpg', 'media/b.jpg'], $post->photoPaths());
         Queue::assertPushed(PublishPostTarget::class, 2);
     }
 
-    public function test_without_ffmpeg_only_youtube_fails_with_instructions(): void
+    public function test_link_without_video_or_photo_fails_with_both_reasons(): void
     {
-        Queue::fake();
-        [$post, $youtube, $tiktok] = $this->photoLinkPost();
+        [$post] = $this->photoLinkPost();
         $this->noVideoInLink();
         $this->mock(PhotoFallback::class, function (MockInterface $mock) {
-            $mock->lastError = 'ffmpeg is not installed. Open System → "Install video downloader (2/3: ffmpeg)".';
-            $mock->shouldReceive('importPhoto')->andReturn('media/photo.jpg');
-            $mock->shouldReceive('makeVideo')->andReturn(null);
+            $mock->lastError = 'no photo found in the link';
+            $mock->shouldReceive('importPhotos')->andReturn([]);
         });
 
         $this->runJob($post);
 
-        $youtubeTarget = $post->targets()->where('social_account_id', $youtube->id)->sole();
-        $this->assertSame(TargetStatus::Failed, $youtubeTarget->status);
-        $this->assertStringContainsString('ffmpeg', $youtubeTarget->error);
-        Queue::assertPushed(PublishPostTarget::class, 1);
-    }
-
-    public function test_link_without_video_or_photo_fails_with_the_download_error(): void
-    {
-        [$post] = $this->photoLinkPost();
-        $this->noVideoInLink();
-        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('importPhoto')->andReturn(null));
-
-        $this->runJob($post);
-
+        $error = $post->targets()->first()->error;
         $this->assertSame(PostStatus::Failed, $post->fresh()->status);
-        $this->assertStringContainsString('HTTP Error 404', $post->targets()->first()->error);
+        $this->assertStringContainsString('HTTP Error 404', $error);
+        $this->assertStringContainsString('Tried the photo instead: no photo found', $error);
     }
 
     public function test_photo_is_taken_from_the_link_preview_and_saved_as_jpg(): void
     {
         $this->app->instance(LinkPreviewer::class, new LinkPreviewer(fn () => ['157.240.1.35']));
-        $image = imagecreatetruecolor(40, 30);
-        ob_start();
-        imagepng($image);
-        $png = (string) ob_get_clean();
         Http::fake([
             'www.facebook.com/*' => Http::response('<meta property="og:image" content="https://lookaside.fbsbx.com/photo.png">'),
-            'lookaside.fbsbx.com/*' => Http::response($png, 200, ['Content-Type' => 'image/png']),
+            'lookaside.fbsbx.com/*' => Http::response($this->png(), 200, ['Content-Type' => 'image/png']),
         ]);
-        $post = Post::factory()->create();
 
-        $path = app(PhotoFallback::class)->importPhoto('https://www.facebook.com/page/posts/123', $post);
+        $paths = app(PhotoFallback::class)->importPhotos('https://www.facebook.com/page/posts/123', Post::factory()->create());
 
-        $this->assertStringEndsWith('.jpg', $path);
-        $this->assertSame(IMAGETYPE_JPEG, getimagesizefromstring(Storage::disk('public')->get($path))[2]);
+        $this->assertCount(1, $paths);
+        $this->assertSame(IMAGETYPE_JPEG, getimagesizefromstring(Storage::disk('public')->get($paths[0]))[2]);
     }
 
-    public function test_youtube_uploads_the_video_made_from_the_photo(): void
+    public function test_all_photos_are_read_from_a_post_on_a_connected_page(): void
     {
-        Storage::disk('public')->put('media/photo-video.mp4', 'mp4-bytes');
+        $page = SocialAccount::factory()->facebook()->create(['platform_account_id' => '555', 'access_token' => 'page-token']);
+        Http::fake([
+            'graph.facebook.com/v24.0/555_12345678901*' => Http::response(['attachments' => ['data' => [[
+                'subattachments' => ['data' => [
+                    ['media' => ['image' => ['src' => 'https://scontent.xx.fbcdn.net/one.jpg']]],
+                    ['media' => ['image' => ['src' => 'https://scontent.xx.fbcdn.net/two.jpg']]],
+                    ['media' => ['image' => ['src' => 'https://scontent.xx.fbcdn.net/three.jpg']]],
+                ]],
+            ]]]]),
+            'scontent.xx.fbcdn.net/*' => Http::response($this->png()),
+        ]);
+
+        $paths = app(PhotoFallback::class)->importPhotos('https://www.facebook.com/MyPage/posts/12345678901', Post::factory()->for($page->user)->create());
+
+        $this->assertCount(3, $paths);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '555_12345678901') && $request['access_token'] === 'page-token');
+    }
+
+    public function test_youtube_uploads_a_slideshow_of_all_photos(): void
+    {
+        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('videoForPost')->once()->andReturnUsing(function () {
+            Storage::disk('public')->put('media/slideshow.mp4', 'mp4-bytes');
+
+            return 'media/slideshow.mp4';
+        }));
         Http::fake([
             'www.googleapis.com/upload/youtube/v3/videos*' => Http::response([], 200, ['Location' => 'https://upload.example.test/s']),
             'upload.example.test/s' => Http::response(['id' => 'yt-9'], 201),
         ]);
         $channel = SocialAccount::factory()->youtube()->create();
-        $post = Post::factory()->for($channel->user)->withPhoto()->create(['options' => ['youtube_video_path' => 'media/photo-video.mp4']]);
+        $post = Post::factory()->for($channel->user)->withPhoto()->create(['options' => ['gallery' => ['media/a.jpg', 'media/b.jpg']]]);
         $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
 
         (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
 
         $this->assertSame(TargetStatus::Published, $target->fresh()->status);
+        $this->assertSame('media/slideshow.mp4', $post->fresh()->option('youtube_video_path'));
         Http::assertSent(fn (Request $request) => $request->hasHeader('X-Upload-Content-Type', 'video/mp4'));
+    }
+
+    public function test_youtube_shows_why_the_video_could_not_be_made(): void
+    {
+        $this->mock(PhotoFallback::class, function (MockInterface $mock) {
+            $mock->lastError = 'the background music could not be downloaded';
+            $mock->shouldReceive('videoForPost')->andReturn(null);
+        });
+        $channel = SocialAccount::factory()->youtube()->create();
+        $post = Post::factory()->for($channel->user)->withPhoto()->create();
+        $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
+
+        (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
+
+        $this->assertSame(TargetStatus::Failed, $target->fresh()->status);
+        $this->assertStringContainsString('the background music could not be downloaded', $target->fresh()->error);
+    }
+
+    public function test_music_from_a_direct_link_is_downloaded_once(): void
+    {
+        Http::fake(['music.example.com/*' => Http::response('mp3-bytes')]);
+        $fetcher = app(MusicFetcher::class);
+
+        $first = $fetcher->fetch('https://music.example.com/song.mp3', 1);
+        $second = $fetcher->fetch('https://music.example.com/song.mp3', 1);
+
+        $this->assertSame($first, $second);
+        $this->assertStringEndsWith('.mp3', $first);
+        $this->assertSame('mp3-bytes', file_get_contents($first));
+        Http::assertSentCount(1);
+    }
+
+    public function test_missing_ffmpeg_is_reported(): void
+    {
+        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('ffmpeg')->andReturn(null));
+        $fallback = app(PhotoFallback::class);
+
+        $this->assertNull($fallback->makeVideo(['media/photo.jpg'], Post::factory()->create()));
+        $this->assertStringContainsString('ffmpeg is not installed', $fallback->lastError);
     }
 
     /**
@@ -155,67 +198,12 @@ class PhotoFallbackTest extends TestCase
         (new PrepareImportedVideo($post))->handle(app(VideoDownloader::class), app(PostDispatcher::class));
     }
 
-    public function test_failure_explains_why_the_photo_could_not_be_used(): void
+    private function png(): string
     {
-        $this->app->instance(LinkPreviewer::class, new LinkPreviewer(fn () => ['157.240.1.35']));
-        Http::fake([
-            'www.facebook.com/*' => Http::response('<meta property="og:image" content="https://lookaside.fbsbx.com/photo.jpg">'),
-            'lookaside.fbsbx.com/*' => Http::failedConnection(),
-        ]);
-        [$post] = $this->photoLinkPost();
-        $this->noVideoInLink();
+        $image = imagecreatetruecolor(40, 30);
+        ob_start();
+        imagepng($image);
 
-        $this->runJob($post);
-
-        $error = $post->targets()->first()->error;
-        $this->assertStringContainsString('Tried the photo instead: could not download the photo from lookaside.fbsbx.com', $error);
-        $this->assertStringContainsString('Outgoing Connections', $error);
-    }
-
-    public function test_missing_ffmpeg_is_reported(): void
-    {
-        $this->mock(VideoDownloader::class, fn (MockInterface $mock) => $mock->shouldReceive('ffmpeg')->andReturn(null));
-        $fallback = app(PhotoFallback::class);
-
-        $this->assertNull($fallback->makeVideo('media/photo.jpg', Post::factory()->create()));
-        $this->assertStringContainsString('ffmpeg is not installed', $fallback->lastError);
-    }
-
-    public function test_retry_makes_the_missing_video_for_youtube_from_the_photo(): void
-    {
-        Storage::disk('public')->put('media/photo.jpg', 'jpeg');
-        $this->mock(PhotoFallback::class, fn (MockInterface $mock) => $mock->shouldReceive('makeVideo')->once()->andReturnUsing(function () {
-            Storage::disk('public')->put('media/made.mp4', 'mp4-bytes');
-
-            return 'media/made.mp4';
-        }));
-        Http::fake([
-            'www.googleapis.com/upload/youtube/v3/videos*' => Http::response([], 200, ['Location' => 'https://upload.example.test/s']),
-            'upload.example.test/s' => Http::response(['id' => 'yt-1'], 201),
-        ]);
-        $channel = SocialAccount::factory()->youtube()->create();
-        $post = Post::factory()->for($channel->user)->create(['media_path' => 'media/photo.jpg', 'media_type' => Post::MEDIA_PHOTO, 'media_mime' => 'image/jpeg']);
-        $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
-
-        (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
-
-        $this->assertSame(TargetStatus::Published, $target->fresh()->status);
-        $this->assertSame('media/made.mp4', $post->fresh()->option('youtube_video_path'));
-    }
-
-    public function test_youtube_shows_why_the_video_could_not_be_made(): void
-    {
-        $this->mock(PhotoFallback::class, function (MockInterface $mock) {
-            $mock->lastError = 'ffmpeg could not make the video (libx264: Error initializing output stream)';
-            $mock->shouldReceive('makeVideo')->andReturn(null);
-        });
-        $channel = SocialAccount::factory()->youtube()->create();
-        $post = Post::factory()->for($channel->user)->withPhoto()->create();
-        $target = PostTarget::factory()->forPostAndAccount($post, $channel)->create();
-
-        (new PublishPostTarget($target))->withFakeQueueInteractions()->handle(app());
-
-        $this->assertSame(TargetStatus::Failed, $target->fresh()->status);
-        $this->assertStringContainsString('Error initializing output stream', $target->fresh()->error);
+        return (string) ob_get_clean();
     }
 }

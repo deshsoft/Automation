@@ -217,9 +217,15 @@ function setUpComposer(form) {
         mediaUrl = URL.createObjectURL(file);
         mediaKind = file.type.startsWith('video/') ? 'video' : 'photo';
 
+        const files = [...mediaInput.files];
+        const totalMb = files.reduce((sum, item) => sum + item.size, 0) / 1024 / 1024;
+
         thumb.replaceChildren(mediaElement(false, 'size-full object-cover'));
-        form.querySelector('[data-media-name]').textContent = file.name;
-        form.querySelector('[data-media-info]').textContent = `${mediaKind === 'video' ? 'Video' : 'Photo'} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+        form.querySelector('[data-media-name]').textContent = files.length > 1 ? `${files.length} photos` : file.name;
+        form.querySelector('[data-media-info]').textContent =
+            files.length > 1
+                ? `Album / carousel · ${totalMb.toFixed(1)} MB${files.length > 10 ? ' · only 10 photos are allowed' : ''}`
+                : `${mediaKind === 'video' ? 'Video' : 'Photo'} · ${totalMb.toFixed(1)} MB`;
         selected.classList.remove('hidden');
         selected.classList.add('flex');
         dropzone.classList.add('hidden');
@@ -275,7 +281,14 @@ function setUpComposer(form) {
         const messages = [];
 
         if (file && mediaKind === 'photo' && platforms.includes('youtube')) {
-            messages.push('YouTube gets a 15-second video made from this photo.');
+            messages.push(
+                mediaInput.files.length > 1
+                    ? 'YouTube gets a slideshow video made from these photos.'
+                    : 'YouTube gets a 15-second video made from this photo.',
+            );
+        }
+        if ([...mediaInput.files].some((item) => item.type.startsWith('video/')) && mediaInput.files.length > 1) {
+            messages.push('Upload one video, or up to 10 photos (not both).');
         }
         if (file && file.type === 'image/png' && platforms.includes('instagram')) {
             messages.push('Instagram only accepts JPG photos.');
@@ -308,14 +321,14 @@ function setUpComposer(form) {
     );
     dropzone.addEventListener('drop', (event) => {
         event.preventDefault();
-        const file = event.dataTransfer.files[0];
-        if (!file) {
+        const dropped = [...event.dataTransfer.files];
+        if (dropped.length === 0) {
             return;
         }
         const transfer = new DataTransfer();
-        transfer.items.add(file);
+        dropped.forEach((item) => transfer.items.add(item));
         mediaInput.files = transfer.files;
-        showMedia(file);
+        showMedia(dropped[0]);
     });
 
     // --- Preview ------------------------------------------------------------

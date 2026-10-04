@@ -125,6 +125,32 @@ class Post extends Model
         return $this->media_type === self::MEDIA_VIDEO;
     }
 
+    /**
+     * All photos of a photo post, in order (one or more).
+     *
+     * @return list<string>
+     */
+    public function photoPaths(): array
+    {
+        if (! $this->isPhoto()) {
+            return [];
+        }
+
+        $gallery = array_values(array_filter((array) $this->option('gallery', [])));
+
+        return $gallery !== [] ? $gallery : array_values(array_filter([$this->media_path]));
+    }
+
+    /**
+     * Public URLs of all photos (Instagram and TikTok download them from here).
+     *
+     * @return list<string>
+     */
+    public function photoUrls(): array
+    {
+        return array_map(fn (string $path) => Storage::disk('public')->url($path), $this->photoPaths());
+    }
+
     public function isPhoto(): bool
     {
         return $this->media_type === self::MEDIA_PHOTO;
@@ -153,7 +179,12 @@ class Post extends Model
      */
     public function deleteMediaFiles(): void
     {
-        Storage::disk('public')->delete(array_filter([$this->media_path, $this->thumbnail_path, $this->option('youtube_video_path')]));
+        Storage::disk('public')->delete(array_filter([
+            $this->media_path,
+            $this->thumbnail_path,
+            $this->option('youtube_video_path'),
+            ...$this->option('gallery', []),
+        ]));
     }
 
     /**

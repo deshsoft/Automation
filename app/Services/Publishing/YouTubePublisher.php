@@ -98,7 +98,7 @@ class YouTubePublisher implements Publisher
             throw new PublishingException('YouTube only accepts videos, and this post has no photo to make one from.');
         }
 
-        $videoPath = $this->photoFallback->makeVideo($post->media_path, $post);
+        $videoPath = $this->photoFallback->videoForPost($post);
 
         if ($videoPath === null) {
             throw new PublishingException('YouTube only accepts videos, and the video could not be made from the photo: '.$this->photoFallback->lastError);

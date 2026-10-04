@@ -75,49 +75,28 @@ class PrepareImportedVideo implements ShouldQueue
     }
 
     /**
-     * Use the link's photo when there is no video. YouTube gets a short video
-     * made from the photo; the other platforms post the photo itself.
+     * Use the link's photos when there is no video. Every platform posts the
+     * photos; YouTube makes a slideshow video from them when it uploads.
      */
     private function usePhotoInstead(Post $post, PostDispatcher $dispatcher): bool
     {
-        $fallback = app(PhotoFallback::class);
-        $photoPath = $fallback->importPhoto((string) $post->videoDownload->url, $post);
+        $photoPaths = app(PhotoFallback::class)->importPhotos((string) $post->videoDownload->url, $post);
 
-        if ($photoPath === null) {
+        if ($photoPaths === []) {
             return false;
         }
 
-        $post->videoDownload->update(['status' => VideoDownload::STATUS_FAILED, 'error' => 'No video in this link; its photo was used instead.']);
-
-        $options = $post->options ?? [];
-        $youtubeTargets = $post->targets()
-            ->where('status', TargetStatus::Pending)
-            ->whereHas('socialAccount', fn ($query) => $query->where('platform', Platform::YouTube));
-
-        if ($youtubeTargets->exists()) {
-            $videoPath = $fallback->makeVideo($photoPath, $post);
-
-            if ($videoPath !== null) {
-                $options['youtube_video_path'] = $videoPath;
-            } else {
-                $youtubeTargets->update([
-                    'status' => TargetStatus::Failed,
-                    'error' => mb_substr('This link has a photo, not a video, and the video for YouTube could not be made: '.$fallback->lastError, 0, 2000),
-                ]);
-            }
-        }
+        $post->videoDownload->update(['status' => VideoDownload::STATUS_FAILED, 'error' => 'No video in this link; its photos were used instead.']);
 
         $post->update([
-            'media_path' => $photoPath,
+            'media_path' => $photoPaths[0],
             'media_type' => Post::MEDIA_PHOTO,
             'media_mime' => 'image/jpeg',
-            'options' => $options,
+            'options' => [...($post->options ?? []), ...(count($photoPaths) > 1 ? ['gallery' => $photoPaths] : [])],
             'status' => $post->scheduled_at?->isFuture() ? PostStatus::Scheduled : PostStatus::Publishing,
         ]);
 
-        if (! $post->targets()->where('status', TargetStatus::Pending)->exists()) {
-            $post->refreshStatus();
-        } elseif ($post->status === PostStatus::Publishing) {
+        if ($post->status === PostStatus::Publishing) {
             $dispatcher->dispatch($post);
         }
 

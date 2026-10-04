@@ -86,20 +86,27 @@ class PostController extends Controller
 
     public function store(StorePostRequest $request, PostDispatcher $dispatcher, ThumbnailOptimizer $thumbnailOptimizer): RedirectResponse
     {
-        $media = $request->file('media');
+        $mediaFiles = $request->mediaFiles();
+        $media = $mediaFiles[0] ?? null;
         $scheduledAt = $request->filled('scheduled_at')
             ? Carbon::parse($request->input('scheduled_at'), config('app.display_timezone'))->utc()
             : null;
 
-        $post = DB::transaction(function () use ($request, $media, $scheduledAt, $thumbnailOptimizer) {
+        $mediaPaths = array_map(fn ($file) => $file->store('media', 'public'), $mediaFiles);
+
+        $post = DB::transaction(function () use ($request, $media, $mediaPaths, $scheduledAt, $thumbnailOptimizer) {
             $post = $request->user()->posts()->create([
                 'title' => $request->input('title'),
                 'caption' => $request->input('caption'),
-                'media_path' => $media?->store('media', 'public'),
+                'media_path' => $mediaPaths[0] ?? null,
                 'media_type' => $media ? (str_starts_with((string) $media->getMimeType(), 'video/') ? Post::MEDIA_VIDEO : Post::MEDIA_PHOTO) : null,
                 'media_mime' => $media?->getMimeType(),
                 'thumbnail_path' => $request->hasFile('thumbnail') ? $thumbnailOptimizer->store($request->file('thumbnail')) : null,
-                'options' => $request->postOptions(),
+                'options' => [
+                    ...$request->postOptions(),
+                    // Several photos: all of them are posted (carousel / album / slideshow).
+                    ...(count($mediaPaths) > 1 ? ['gallery' => $mediaPaths] : []),
+                ],
                 'share_from_account_id' => $request->usesShareMode() ? (int) $request->input('share_from_account_id') : null,
                 'stagger_seconds' => (int) $request->input('stagger_seconds', 0),
                 'status' => match (true) {

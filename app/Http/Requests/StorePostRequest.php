@@ -8,6 +8,8 @@ use App\Models\VideoDownload;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -57,6 +59,30 @@ class StorePostRequest extends FormRequest
         ]);
     }
 
+    public const MAX_PHOTOS = 10;
+
+    /**
+     * The uploaded photo(s) or video, always as a list.
+     *
+     * @return list<UploadedFile>
+     */
+    public function mediaFiles(): array
+    {
+        return array_values(array_filter(Arr::wrap($this->file('media'))));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function mediaFileRules(): array
+    {
+        return [
+            'file',
+            'mimetypes:image/jpeg,image/png,video/mp4,video/quicktime',
+            'max:'.((int) config('filesystems.max_upload_mb', 1024) * 1024),
+        ];
+    }
+
     public function rules(): array
     {
         return [
@@ -85,11 +111,21 @@ class StorePostRequest extends FormRequest
             ],
             'captions' => ['nullable', 'array'],
             'captions.*' => ['nullable', 'string', 'max:5000'],
-            'media' => [
+            // One video, or up to 10 photos (media[] from the form, or a single file).
+            ...(is_array($this->file('media'))
+                ? ['media' => ['nullable', 'array', 'max:'.self::MAX_PHOTOS], 'media.*' => $this->mediaFileRules()]
+                : ['media' => ['nullable', ...$this->mediaFileRules()]]),
+            'music_url' => [
                 'nullable',
-                'file',
-                'mimetypes:image/jpeg,image/png,video/mp4,video/quicktime',
-                'max:'.((int) config('filesystems.max_upload_mb', 1024) * 1024),
+                'url:http,https',
+                'max:2048',
+                function (string $attribute, mixed $value, Closure $fail) {
+                    $isAudioFile = preg_match('/\.(mp3|m4a|aac|wav|ogg)$/i', (string) parse_url((string) $value, PHP_URL_PATH)) === 1;
+
+                    if (! $isAudioFile && VideoDownload::sourceOf((string) $value) === null) {
+                        $fail('Use a YouTube/Facebook link or a direct link to an MP3/M4A/WAV file.');
+                    }
+                },
             ],
             'thumbnail' => ['nullable', 'file', 'mimetypes:image/jpeg,image/png,image/webp', 'max:20480'],
             'scheduled_at' => ['nullable', 'date'],
@@ -119,6 +155,8 @@ class StorePostRequest extends FormRequest
         return [
             'accounts.required' => 'Select at least one account.',
             'media.mimetypes' => 'Upload a JPG/PNG photo or an MP4/MOV video.',
+            'media.*.mimetypes' => 'Upload JPG/PNG photos or one MP4/MOV video.',
+            'media.max' => 'Upload at most '.self::MAX_PHOTOS.' photos.',
             'thumbnail.mimetypes' => 'The thumbnail must be a JPG, PNG or WebP image.',
             'thumbnail.max' => 'The thumbnail must be 20 MB or smaller.',
             'share_from_account_id.required_if' => 'Choose the main Page that the other Pages will share from.',
@@ -140,7 +178,12 @@ class StorePostRequest extends FormRequest
                 }
 
                 $platforms = $this->selectedAccounts()->pluck('platform')->unique()->values();
-                $media = $this->file('media');
+                $mediaFiles = $this->mediaFiles();
+                $media = $mediaFiles[0] ?? null;
+
+                if (count($mediaFiles) > 1 && collect($mediaFiles)->contains(fn ($file) => str_starts_with((string) $file->getMimeType(), 'video/'))) {
+                    $validator->errors()->add('media', 'Upload one video, or up to '.self::MAX_PHOTOS.' photos (not both).');
+                }
                 $importsVideo = $this->filled('import_url');
                 $isVideo = $importsVideo || ($media !== null && str_starts_with((string) $media->getMimeType(), 'video/'));
 
@@ -174,11 +217,11 @@ class StorePostRequest extends FormRequest
                     }
                 }
 
-                if ($platforms->contains(Platform::Instagram) && $media !== null && ! $isVideo && $media->getMimeType() !== 'image/jpeg') {
+                if ($platforms->contains(Platform::Instagram) && ! $isVideo && collect($mediaFiles)->contains(fn ($file) => $file->getMimeType() !== 'image/jpeg')) {
                     $validator->errors()->add('media', 'Instagram only accepts JPG photos.');
                 }
 
-                if ($platforms->contains(Platform::Instagram) && $media !== null && ! $isVideo && $media->getSize() > 8 * 1024 * 1024) {
+                if ($platforms->contains(Platform::Instagram) && ! $isVideo && collect($mediaFiles)->contains(fn ($file) => $file->getSize() > 8 * 1024 * 1024)) {
                     $validator->errors()->add('media', 'Instagram photos must be 8 MB or smaller.');
                 }
 
@@ -238,6 +281,7 @@ class StorePostRequest extends FormRequest
             'captions' => $captions,
             'link' => $this->input('link'),
             'import_url' => $this->input('import_url'),
+            'music_url' => $this->input('music_url'),
             'location_id' => $this->input('location_id'),
             'share_message' => $this->usesShareMode() ? $this->input('share_message') : null,
             'instagram' => array_filter([

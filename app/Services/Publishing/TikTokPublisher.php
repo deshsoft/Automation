@@ -78,7 +78,7 @@ class TikTokPublisher implements Publisher
                 'source_info' => [
                     'source' => 'PULL_FROM_URL',
                     'photo_cover_index' => 0,
-                    'photo_images' => [$post->mediaUrl()],
+                    'photo_images' => array_slice($post->photoUrls(), 0, 35),
                 ],
                 'post_mode' => 'DIRECT_POST',
                 'media_type' => 'PHOTO',

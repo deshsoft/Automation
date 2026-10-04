@@ -106,9 +106,9 @@
                     <h2 class="mb-3 font-semibold">Photo or video</h2>
                     <label data-dropzone class="relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40">
                         <svg class="size-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/></svg>
-                        <span class="text-sm font-medium text-indigo-600">Click to choose, or drag a file here</span>
-                        <span class="text-xs text-gray-500">JPG/PNG photo or MP4/MOV video · max {{ config('filesystems.max_upload_mb') }} MB</span>
-                        <input id="media" name="media" type="file" accept="image/jpeg,image/png,video/mp4,video/quicktime" class="sr-only" data-media-input>
+                        <span class="text-sm font-medium text-indigo-600">Click to choose, or drag files here</span>
+                        <span class="text-xs text-gray-500">One MP4/MOV video, or up to 10 JPG/PNG photos (posted as an album / carousel) · max {{ config('filesystems.max_upload_mb') }} MB</span>
+                        <input id="media" name="media[]" type="file" multiple accept="image/jpeg,image/png,video/mp4,video/quicktime" class="sr-only" data-media-input>
                     </label>
 
                     <div data-media-selected class="mt-3 hidden items-center gap-3 rounded-md bg-gray-50 p-2">
@@ -230,6 +230,16 @@
                         <label for="youtube_tags" class="mb-1 block text-sm font-medium">Tags</label>
                         <input id="youtube_tags" name="youtube_tags" type="text" value="{{ old('youtube_tags') }}" placeholder="dhaka, election, speech"
                                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label for="music_url" class="mb-1 block text-sm font-medium">Background music <span class="font-normal text-gray-500">(for videos made from photos, optional)</span></label>
+                        <input id="music_url" name="music_url" type="text" inputmode="url" value="{{ old('music_url') }}"
+                               placeholder="YouTube link or a direct .mp3 link"
+                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+                        <p class="mt-1 text-xs text-gray-500">
+                            YouTube only takes videos, so photos become a slideshow ({{ \App\Services\Downloading\PhotoFallback::SECONDS_PER_PHOTO }} seconds per photo). Leave empty for silence.
+                            <span class="text-amber-700">Use music you have the rights to (e.g. the free YouTube Audio Library); popular songs get blocked or claimed by YouTube.</span>
+                        </p>
                     </div>
                     <div>
                         <label for="youtube_privacy" class="mb-1 block text-sm font-medium">Visibility</label>

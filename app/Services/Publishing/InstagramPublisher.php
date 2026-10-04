@@ -49,11 +49,33 @@ class InstagramPublisher implements Publisher
             throw new PublishingException('Instagram needs a photo or video.');
         }
 
-        $parameters = $post->isVideo()
-            ? ['media_type' => 'REELS', 'video_url' => $post->mediaUrl(), 'share_to_feed' => 'true', 'cover_url' => (string) $post->thumbnailUrl()]
-            : ['image_url' => $post->mediaUrl()];
-
         $userTags = $this->userTags($post->option('instagram.user_tags', []), withPosition: ! $post->isVideo());
+
+        $photoUrls = $post->photoUrls();
+
+        if (count($photoUrls) > 1) {
+            // Carousel: one container per photo (people tags go on the first), then the carousel itself.
+            $children = [];
+
+            foreach (array_slice($photoUrls, 0, 10) as $index => $photoUrl) {
+                $child = $this->graph()->post($this->url($account->platform_account_id.'/media'), array_filter([
+                    'image_url' => $photoUrl,
+                    'is_carousel_item' => 'true',
+                    'user_tags' => $index === 0 && $userTags !== [] ? (string) json_encode($userTags) : '',
+                    'access_token' => $account->access_token,
+                ], fn (string $value) => $value !== ''));
+
+                PublishingException::throwUnlessSuccessful($child, 'Instagram photo '.($index + 1));
+                $children[] = (string) $child->json('id');
+            }
+
+            $parameters = ['media_type' => 'CAROUSEL', 'children' => implode(',', $children)];
+            $userTags = [];
+        } else {
+            $parameters = $post->isVideo()
+                ? ['media_type' => 'REELS', 'video_url' => $post->mediaUrl(), 'share_to_feed' => 'true', 'cover_url' => (string) $post->thumbnailUrl()]
+                : ['image_url' => $post->mediaUrl()];
+        }
         $collaborators = $post->option('instagram.collaborators', []);
 
         $response = $this->graph()->post($this->url($account->platform_account_id.'/media'), array_filter([

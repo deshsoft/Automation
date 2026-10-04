@@ -11,6 +11,7 @@ use App\Models\SocialAccount;
 use App\Services\LinkPreviewer;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Photos and videos are uploaded as files (not as links), so publishing works
@@ -49,6 +50,8 @@ class FacebookPublisher implements Publisher
                 'title' => (string) $post->title,
                 'access_token' => $account->access_token,
             ]);
+        } elseif (count($post->photoPaths()) > 1) {
+            $response = $this->publishAlbum($post, $account, $caption, $place);
         } elseif ($post->isPhoto()) {
             $response = $this->upload($post, $this->url($account->platform_account_id.'/photos'), [
                 'caption' => $caption,
@@ -68,6 +71,40 @@ class FacebookPublisher implements Publisher
         $postId = (string) ($response->json('post_id') ?? $response->json('id'));
 
         return PublishResult::published($postId, $this->permalink($postId, $account));
+    }
+
+    /**
+     * Several photos in one post: upload each photo unpublished, then create
+     * one feed post that attaches all of them.
+     */
+    private function publishAlbum(Post $post, SocialAccount $account, string $caption, string $place): Response
+    {
+        $attached = [];
+
+        foreach ($post->photoPaths() as $index => $path) {
+            $absolutePath = Storage::disk('public')->path($path);
+
+            if (! is_file($absolutePath)) {
+                throw new PublishingException('Photo '.($index + 1).' is missing on the server.');
+            }
+
+            $photo = Http::connectTimeout(10)->timeout(120)
+                ->attach('source', fopen($absolutePath, 'rb'), basename($absolutePath))
+                ->post($this->url($account->platform_account_id.'/photos'), [
+                    'published' => 'false',
+                    'access_token' => $account->access_token,
+                ]);
+
+            PublishingException::throwUnlessSuccessful($photo, 'Facebook photo '.($index + 1));
+            $attached['attached_media['.$index.']'] = (string) json_encode(['media_fbid' => (string) $photo->json('id')]);
+        }
+
+        return Http::asForm()->connectTimeout(10)->timeout(60)->post($this->url($account->platform_account_id.'/feed'), array_filter([
+            'message' => $caption,
+            'place' => $place,
+            ...$attached,
+            'access_token' => $account->access_token,
+        ], fn (string $value) => $value !== ''));
     }
 
     /**

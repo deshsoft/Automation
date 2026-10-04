@@ -75,7 +75,15 @@
                 @if ($post->isVideo())
                     <video src="{{ $post->mediaUrl() }}" @if ($post->hasThumbnail()) poster="{{ $post->thumbnailUrl() }}" @endif controls class="w-full rounded-md"></video>
                 @else
-                    <img src="{{ $post->mediaUrl() }}" alt="" class="w-full rounded-md">
+                    @if (count($post->photoPaths()) > 1)
+                        <div class="grid grid-cols-2 gap-2">
+                            @foreach ($post->photoUrls() as $photoUrl)
+                                <img src="{{ $photoUrl }}" alt="" class="aspect-square w-full rounded-md object-cover">
+                            @endforeach
+                        </div>
+                    @else
+                        <img src="{{ $post->mediaUrl() }}" alt="" class="w-full rounded-md">
+                    @endif
                 @endif
             @endif
             @if ($post->title)

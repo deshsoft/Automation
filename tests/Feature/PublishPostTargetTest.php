@@ -641,4 +641,57 @@ class PublishPostTargetTest extends TestCase
         $this->assertSame(TargetStatus::Published, $target->fresh()->status);
         $this->assertStringContainsString('custom video thumbnails', $target->fresh()->state['thumbnail_error']);
     }
+
+    public function test_facebook_posts_several_photos_as_one_album(): void
+    {
+        Storage::disk('public')->put('media/a.jpg', 'a');
+        Storage::disk('public')->put('media/b.jpg', 'b');
+        Http::fake([
+            'graph.facebook.com/v24.0/111/photos' => Http::sequence()->push(['id' => 'p1'])->push(['id' => 'p2']),
+            'graph.facebook.com/v24.0/111/feed' => Http::response(['id' => '111_77']),
+            'graph.facebook.com/v24.0/111_77*' => Http::response([]),
+        ]);
+        $page = SocialAccount::factory()->facebook()->create(['platform_account_id' => '111']);
+        $post = Post::factory()->for($page->user)->withPhoto()->create(['caption' => 'Album', 'options' => ['gallery' => ['media/a.jpg', 'media/b.jpg']]]);
+        $target = $this->targetFor($page, $post);
+
+        $this->runJob($target);
+
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/111/feed')
+            && $request['message'] === 'Album'
+            && $request['attached_media[0]'] === '{"media_fbid":"p1"}'
+            && $request['attached_media[1]'] === '{"media_fbid":"p2"}');
+        $this->assertSame('111_77', $target->fresh()->platform_post_id);
+    }
+
+    public function test_instagram_posts_several_photos_as_a_carousel(): void
+    {
+        Http::fake([
+            'graph.facebook.com/v24.0/ig-1/media' => Http::sequence()->push(['id' => 'c1'])->push(['id' => 'c2'])->push(['id' => 'carousel-1']),
+        ]);
+        $instagram = SocialAccount::factory()->instagram()->create(['platform_account_id' => 'ig-1']);
+        $post = Post::factory()->for($instagram->user)->withPhoto()->create(['caption' => 'Swipe', 'options' => ['gallery' => ['media/a.jpg', 'media/b.jpg']]]);
+        $target = $this->targetFor($instagram, $post);
+
+        $this->runJob($target)->assertReleased(5);
+
+        Http::assertSent(fn (Request $request) => ($request->data()['is_carousel_item'] ?? null) === 'true' && str_ends_with($request->data()['image_url'] ?? '', 'media/b.jpg'));
+        Http::assertSent(fn (Request $request) => ($request->data()['media_type'] ?? null) === 'CAROUSEL' && $request['children'] === 'c1,c2' && $request['caption'] === 'Swipe');
+        $this->assertSame('carousel-1', $target->fresh()->state['container_id']);
+    }
+
+    public function test_tiktok_posts_several_photos_as_a_carousel(): void
+    {
+        Http::fake([
+            'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response(['data' => ['privacy_level_options' => ['SELF_ONLY']], 'error' => ['code' => 'ok']]),
+            'open.tiktokapis.com/v2/post/publish/content/init/' => Http::response(['data' => ['publish_id' => 'p_1'], 'error' => ['code' => 'ok']]),
+        ]);
+        $tiktok = SocialAccount::factory()->tiktok()->create();
+        $post = Post::factory()->for($tiktok->user)->withPhoto()->create(['options' => ['gallery' => ['media/a.jpg', 'media/b.jpg', 'media/c.jpg']]]);
+        $target = $this->targetFor($tiktok, $post);
+
+        $this->runJob($target);
+
+        Http::assertSent(fn (Request $request) => str_ends_with($request->url(), 'content/init/') && count($request['source_info']['photo_images']) === 3);
+    }
 }

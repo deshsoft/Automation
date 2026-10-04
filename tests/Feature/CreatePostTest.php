@@ -443,4 +443,58 @@ class CreatePostTest extends TestCase
         [$width, $height] = getimagesize(Storage::disk('public')->path($path));
         $this->assertSame([1920, 1440], [$width, $height]);
     }
+
+    public function test_several_photos_are_saved_as_an_album(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+
+        $this->actingAs($this->user)->post(route('posts.store'), [
+            'accounts' => [$page->id],
+            'media' => [UploadedFile::fake()->image('a.jpg'), UploadedFile::fake()->image('b.jpg'), UploadedFile::fake()->image('c.jpg')],
+            'music_url' => 'https://example.com/song.mp3',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $post = Post::sole();
+        $this->assertCount(3, $post->photoPaths());
+        $this->assertSame($post->photoPaths()[0], $post->media_path);
+        $this->assertSame('https://example.com/song.mp3', $post->option('music_url'));
+        foreach ($post->photoPaths() as $path) {
+            Storage::disk('public')->assertExists($path);
+        }
+    }
+
+    public function test_photos_and_a_video_cannot_be_mixed(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+
+        $this->actingAs($this->user)->post(route('posts.store'), [
+            'accounts' => [$page->id],
+            'media' => [UploadedFile::fake()->image('a.jpg'), UploadedFile::fake()->create('v.mp4', 100, 'video/mp4')],
+            'stagger_seconds' => 0,
+        ])->assertSessionHasErrors('media');
+    }
+
+    public function test_more_than_ten_photos_are_rejected(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+
+        $this->actingAs($this->user)->post(route('posts.store'), [
+            'accounts' => [$page->id],
+            'media' => array_map(fn ($i) => UploadedFile::fake()->image("p{$i}.jpg"), range(1, 11)),
+            'stagger_seconds' => 0,
+        ])->assertSessionHasErrors('media');
+    }
+
+    public function test_music_must_be_a_video_site_or_audio_file_link(): void
+    {
+        $channel = SocialAccount::factory()->for($this->user)->youtube()->create();
+
+        $this->actingAs($this->user)->post(route('posts.store'), [
+            'accounts' => [$channel->id],
+            'media' => UploadedFile::fake()->image('a.jpg'),
+            'music_url' => 'https://example.com/page.html',
+            'stagger_seconds' => 0,
+        ])->assertSessionHasErrors('music_url');
+    }
 }
