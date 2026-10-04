@@ -140,6 +140,7 @@ class StorePostRequest extends FormRequest
             'instagram_collaborators' => ['nullable', 'string', 'max:200'],
             'youtube_tags' => ['nullable', 'string', 'max:500'],
             'youtube_privacy' => ['nullable', Rule::in(['public', 'unlisted', 'private'])],
+            'youtube_format' => ['nullable', Rule::in(['shorts', 'video', 'post'])],
             'tiktok_privacy' => ['nullable', Rule::in(['public', 'private'])],
             'tiktok_allow_comments' => ['nullable', 'boolean'],
             'tiktok_allow_duet' => ['nullable', 'boolean'],
@@ -291,6 +292,7 @@ class StorePostRequest extends FormRequest
             'youtube' => array_filter([
                 'tags' => $this->listFrom('youtube_tags'),
                 'privacy' => $this->input('youtube_privacy'),
+                'format' => $this->input('youtube_format'),
             ]),
             'tiktok' => [
                 'privacy' => $this->input('tiktok_privacy', 'public'),

@@ -128,7 +128,7 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3">
-                                <span class="rounded-full px-2 py-0.5 text-xs font-medium {{ $target->status->color() }}">{{ ucfirst($target->status->value) }}</span>
+                                <span class="rounded-full px-2 py-0.5 text-xs font-medium {{ $target->status->color() }}">{{ $target->status->label() }}</span>
                                 @if ($target->published_at)
                                     <div class="mt-1 text-xs text-gray-500">
                                         <x-local-time :time="$target->published_at" />
@@ -145,6 +145,23 @@
                                 @endif
                                 @if ($target->state['thumbnail_error'] ?? null)
                                     <div class="mt-1 text-xs text-amber-700">{{ $target->state['thumbnail_error'] }}</div>
+                                @endif
+                                @if ($target->status === \App\Enums\TargetStatus::Manual)
+                                    {{-- YouTube photo posts have no API: everything ready to post by hand --}}
+                                    <div class="mt-2 space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                                        <div class="font-semibold">Post it on YouTube in 3 steps:</div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <a href="{{ route('posts.photos', $post) }}" class="rounded-md bg-white px-2.5 py-1.5 font-medium shadow-sm ring-1 ring-sky-200 hover:bg-sky-100">1. ⬇️ Download photos ({{ count($post->photoPaths()) }})</a>
+                                            <button type="button" data-copy="{{ $post->captionFor($target->socialAccount->platform) }}" class="rounded-md bg-white px-2.5 py-1.5 font-medium shadow-sm ring-1 ring-sky-200 hover:bg-sky-100">2. 📋 Copy caption</button>
+                                            <a href="https://www.youtube.com/channel/{{ $target->socialAccount->platform_account_id }}/posts" target="_blank" rel="noopener" class="rounded-md bg-red-600 px-2.5 py-1.5 font-medium text-white hover:bg-red-700">3. ↗ Open channel posts</a>
+                                        </div>
+                                        <div class="text-sky-800">On YouTube: paste the caption, click 🖼️ <em>Image</em>, add the photos, then <strong>Post</strong>.</div>
+                                        <form method="POST" action="{{ route('post-targets.mark-posted', $target) }}" class="flex flex-wrap items-center gap-2">
+                                            @csrf
+                                            <input name="permalink" type="url" placeholder="Link of the YouTube post (optional)" class="min-w-0 flex-1 rounded-md border border-sky-200 bg-white px-2 py-1.5">
+                                            <button class="rounded-md bg-sky-700 px-2.5 py-1.5 font-medium text-white hover:bg-sky-800">✓ Mark as posted</button>
+                                        </form>
+                                    </div>
                                 @endif
                             </td>
                         </tr>

@@ -15,7 +15,17 @@ final readonly class PublishResult
         public ?string $platformPostId,
         public ?string $permalink,
         public int $checkAgainInSeconds,
+        public bool $needsManualPost = false,
     ) {}
+
+    /**
+     * Everything is prepared, but the platform has no API for this kind of
+     * post, so the user publishes it by hand.
+     */
+    public static function manual(): self
+    {
+        return new self(false, null, null, 0, true);
+    }
 
     public static function published(?string $platformPostId, ?string $permalink = null): self
     {

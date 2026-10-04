@@ -8,6 +8,7 @@ use App\Enums\TargetStatus;
 use App\Http\Requests\StorePostRequest;
 use App\Jobs\PrepareImportedVideo;
 use App\Models\Post;
+use App\Models\PostTarget;
 use App\Models\VideoDownload;
 use App\Services\Publishing\PostDispatcher;
 use App\Services\ThumbnailOptimizer;
@@ -16,7 +17,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use ZipArchive;
 
 class PostController extends Controller
 {
@@ -157,6 +161,59 @@ class PostController extends Controller
         $post->targets->each->setRelation('post', $post);
 
         return view('posts.show', ['post' => $post]);
+    }
+
+    /**
+     * All photos of a post as one ZIP, for posting them by hand (YouTube photo posts).
+     */
+    public function downloadPhotos(Post $post): BinaryFileResponse|RedirectResponse
+    {
+        Gate::authorize('view', $post);
+
+        $paths = array_filter($post->photoPaths(), fn (string $path) => Storage::disk('public')->exists($path));
+
+        if ($paths === []) {
+            return back()->with('error', 'This post has no photos any more (they are deleted after a few days, see Settings).');
+        }
+
+        if (count($paths) === 1) {
+            return response()->download(Storage::disk('public')->path(reset($paths)), 'post-'.$post->id.'.jpg');
+        }
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'photos');
+        $zip = new ZipArchive;
+        $zip->open($zipPath, ZipArchive::OVERWRITE);
+
+        foreach (array_values($paths) as $index => $path) {
+            $zip->addFile(Storage::disk('public')->path($path), sprintf('photo-%02d.%s', $index + 1, pathinfo($path, PATHINFO_EXTENSION)));
+        }
+
+        $zip->close();
+
+        return response()->download($zipPath, 'post-'.$post->id.'-photos.zip')->deleteFileAfterSend();
+    }
+
+    /**
+     * The user posted a "Ready to post" item by hand (e.g. a YouTube photo post).
+     */
+    public function markPosted(Request $request, PostTarget $target): RedirectResponse
+    {
+        Gate::authorize('update', $target->post);
+
+        $validated = $request->validate(['permalink' => ['nullable', 'url:http,https', 'max:500']]);
+
+        if ($target->status !== TargetStatus::Manual) {
+            return back()->with('error', 'Only "Ready to post" items can be marked as posted.');
+        }
+
+        $target->update([
+            'status' => TargetStatus::Published,
+            'permalink' => $validated['permalink'] ?? null,
+            'published_at' => now(),
+        ]);
+        $target->post->refreshStatus();
+
+        return back()->with('success', $target->socialAccount->name.': marked as posted.');
     }
 
     public function retry(Post $post, PostDispatcher $dispatcher): RedirectResponse

@@ -226,7 +226,8 @@ class Post extends Model
             return;
         }
 
-        $publishedCount = $statuses->filter(fn (TargetStatus $status) => $status === TargetStatus::Published)->count();
+        // "Ready to post" targets succeeded on the app's side; the user finishes them by hand.
+        $publishedCount = $statuses->filter(fn (TargetStatus $status) => in_array($status, [TargetStatus::Published, TargetStatus::Manual], true))->count();
 
         $this->update([
             'status' => match (true) {

@@ -39,6 +39,8 @@ Route::middleware('auth')->group(function () {
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
     Route::post('settings/clean-up', [SettingsController::class, 'cleanUp'])->name('settings.clean-up');
+    Route::get('posts/{post}/photos', [PostController::class, 'downloadPhotos'])->name('posts.photos');
+    Route::post('post-targets/{target}/mark-posted', [PostController::class, 'markPosted'])->name('post-targets.mark-posted');
     Route::post('posts/{post}/retry', [PostController::class, 'retry'])->name('posts.retry');
 
     Route::get('live', [LiveStreamController::class, 'index'])->name('live.index');

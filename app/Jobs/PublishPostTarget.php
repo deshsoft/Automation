@@ -70,6 +70,13 @@ class PublishPostTarget implements ShouldQueue
             return;
         }
 
+        if ($result->needsManualPost) {
+            $target->update(['status' => TargetStatus::Manual, 'error' => null]);
+            $target->post->refreshStatus();
+
+            return;
+        }
+
         if (! $result->isPublished) {
             $this->release($result->checkAgainInSeconds);
 

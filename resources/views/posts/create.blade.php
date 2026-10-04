@@ -232,6 +232,26 @@
                                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
                     </div>
                     <div>
+                        <div class="mb-1 text-sm font-medium">When the post has photos, on YouTube make a…</div>
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            @foreach ([
+                                'shorts' => ['📱 Shorts', 'Vertical slideshow video (9:16)', 'Automatic'],
+                                'video' => ['🖥️ Regular video', 'Horizontal slideshow (16:9)', 'Automatic'],
+                                'post' => ['🖼️ Photo post', 'A Community post with the photos', 'You click "Post" (YouTube has no API)'],
+                            ] as $format => [$label, $hint, $note])
+                                <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50 has-checked:border-indigo-400 has-checked:bg-indigo-50">
+                                    <input type="radio" name="youtube_format" value="{{ $format }}" class="mt-1" @checked(old('youtube_format', 'shorts') === $format)>
+                                    <span>
+                                        <span class="block text-sm font-medium">{{ $label }}</span>
+                                        <span class="block text-xs text-gray-500">{{ $hint }}</span>
+                                        <span class="block text-xs text-gray-400">{{ $note }}</span>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Videos are always uploaded as videos.</p>
+                    </div>
+                    <div>
                         <label for="music_url" class="mb-1 block text-sm font-medium">Background music <span class="font-normal text-gray-500">(for videos made from photos, optional)</span></label>
                         <input id="music_url" name="music_url" type="text" inputmode="url" value="{{ old('music_url') }}"
                                placeholder="YouTube link or a direct .mp3 link"

@@ -29,7 +29,12 @@ class YouTubePublisher implements Publisher
     {
         $post = $target->post;
 
-        // YouTube only takes videos, so a photo post gets a short video made from its photo.
+        // YouTube's API cannot create photo posts: prepare it for the user to post by hand.
+        if (! $post->isVideo() && $post->option('youtube.format') === 'post') {
+            return PublishResult::manual();
+        }
+
+        // YouTube only takes videos, so a photo post gets a slideshow video made from its photos.
         $generatedVideo = $post->isVideo() ? null : $this->videoForPhoto($post);
 
         $path = $post->isVideo() ? $post->mediaLocalPath() : Storage::disk('public')->path((string) $generatedVideo);

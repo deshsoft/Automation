@@ -109,7 +109,7 @@ class PhotoFallback
             }
         }
 
-        return $this->makeVideo($post->photoPaths(), $post, $musicPath);
+        return $this->makeVideo($post->photoPaths(), $post, $musicPath, horizontal: $post->option('youtube.format') === 'video');
     }
 
     /**
@@ -117,9 +117,12 @@ class PhotoFallback
      * copy of itself, with a short fade between photos. Returns its path, or null.
      *
      * @param  string|list<string>  $photoPaths
+     * @param  bool  $horizontal  1920x1080 for a regular video instead of 1080x1920 for Shorts
      */
-    public function makeVideo(string|array $photoPaths, Post $post, ?string $musicPath = null): ?string
+    public function makeVideo(string|array $photoPaths, Post $post, ?string $musicPath = null, bool $horizontal = false): ?string
     {
+        [$width, $height] = $horizontal ? [1920, 1080] : [1080, 1920];
+        $small = (int) ($width / 10).':'.(int) ($height / 10);
         $photoPaths = array_values((array) $photoPaths);
         $ffmpeg = $this->downloader->ffmpeg();
 
@@ -144,8 +147,8 @@ class PhotoFallback
             $fades = $count > 1 ? ',fade=t=in:st=0:d=0.4,fade=t=out:st='.($perPhoto - 0.4).':d=0.4' : '';
             // Blur a small copy for the background (much less CPU on shared hosting).
             $filters[] = "[{$index}:v]split[b{$index}][f{$index}];"
-                ."[b{$index}]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=4:1,scale=1080:1920,setsar=1[bg{$index}];"
-                ."[f{$index}]scale=1080:1920:force_original_aspect_ratio=decrease,setsar=1[fg{$index}];"
+                ."[b{$index}]scale={$small}:force_original_aspect_ratio=increase,crop={$small},boxblur=4:1,scale={$width}:{$height},setsar=1[bg{$index}];"
+                ."[f{$index}]scale={$width}:{$height}:force_original_aspect_ratio=decrease,setsar=1[fg{$index}];"
                 ."[bg{$index}][fg{$index}]overlay=(W-w)/2:(H-h)/2,fps=25,format=yuv420p{$fades}[v{$index}]";
         }
 
