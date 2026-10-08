@@ -115,6 +115,38 @@ class YouTubePublisher implements Publisher
         return $videoPath;
     }
 
+    /**
+     * Change the title, description, tags and visibility of a published video.
+     *
+     * @throws PublishingException
+     */
+    public function updateLive(PostTarget $target): void
+    {
+        $post = $target->post;
+        $accessToken = $this->google->freshAccessToken($target->socialAccount);
+
+        $response = Http::withToken($accessToken)->connectTimeout(10)->timeout(60)
+            ->put('https://www.googleapis.com/youtube/v3/videos?part=snippet,status', [
+                'id' => $target->platform_post_id,
+                'snippet' => array_filter([
+                    'title' => $post->resolvedTitle(),
+                    'description' => mb_substr($post->captionFor(Platform::YouTube), 0, 5000),
+                    'tags' => $post->option('youtube.tags', []),
+                    'categoryId' => (string) config('services.youtube.category_id'),
+                ], fn (mixed $value) => $value !== []),
+                'status' => [
+                    'privacyStatus' => $post->option('youtube.privacy') ?: config('services.youtube.privacy'),
+                    'selfDeclaredMadeForKids' => false,
+                ],
+            ]);
+
+        if ($response->status() === 403 && str_contains(strtolower($response->body()), 'insufficient')) {
+            throw new PublishingException('YouTube edit: this channel was connected before editing was supported. Reconnect it once on the Accounts page (+ YouTube channel), then save again.');
+        }
+
+        PublishingException::throwUnlessSuccessful($response, 'YouTube edit');
+    }
+
     private function startUploadSession(PostTarget $target, string $accessToken, int $fileSize, string $mime): string
     {
         $post = $target->post;

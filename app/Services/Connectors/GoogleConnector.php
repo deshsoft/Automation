@@ -20,6 +20,8 @@ class GoogleConnector implements Connector
     public const SCOPES = [
         'https://www.googleapis.com/auth/youtube.upload',
         'https://www.googleapis.com/auth/youtube.readonly',
+        // Needed to edit a video's title/description after it is published.
+        'https://www.googleapis.com/auth/youtube.force-ssl',
     ];
 
     private const TOKEN_URL = 'https://oauth2.googleapis.com/token';

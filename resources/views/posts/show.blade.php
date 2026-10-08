@@ -53,6 +53,12 @@
         </div>
     @endif
 
+    @if (session('live_updates'))
+        <div class="mb-6 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            ✏️ Sending the changes to {{ session('live_updates') }} published post(s) on Facebook/YouTube. Refresh in a minute to see the result next to each account.
+        </div>
+    @endif
+
     @php($facebookLinks = $post->targets->filter(fn ($target) => $target->permalink && $target->socialAccount->platform === \App\Enums\Platform::Facebook)->pluck('permalink')->values())
     @if ($facebookLinks->isNotEmpty())
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center">
@@ -149,6 +155,11 @@
                                 @endif
                                 @if ($target->error)
                                     <div class="mt-1 text-xs text-red-600">{{ $target->error }}</div>
+                                @endif
+                                @if ($liveUpdate = $target->state['live_update'] ?? null)
+                                    <div @class(['mt-1 text-xs', 'text-green-700' => $liveUpdate['ok'], 'text-red-600' => ! $liveUpdate['ok']])>
+                                        ✏️ {{ $liveUpdate['ok'] ? 'Edit sent:' : 'Edit failed:' }} {{ $liveUpdate['message'] }}
+                                    </div>
                                 @endif
                                 @if ($target->state['thumbnail_error'] ?? null)
                                     <div class="mt-1 text-xs text-amber-700">{{ $target->state['thumbnail_error'] }}</div>

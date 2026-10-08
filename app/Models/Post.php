@@ -89,12 +89,20 @@ class Post extends Model
     }
 
     /**
-     * Posts that have not gone out (scheduled, cancelled) or did not fully
-     * go out (failed) can still be edited.
+     * Every post can be edited except while it is being downloaded or published.
+     * Published Facebook and YouTube posts get the new text sent to them.
      */
     public function isEditable(): bool
     {
-        return in_array($this->status, [PostStatus::Scheduled, PostStatus::Cancelled, PostStatus::Failed, PostStatus::PartiallyFailed], true);
+        return ! $this->isBusy();
+    }
+
+    /**
+     * Whether some accounts already have this post (then media cannot change).
+     */
+    public function hasPublishedTargets(): bool
+    {
+        return $this->targets()->whereIn('status', [TargetStatus::Published, TargetStatus::Manual])->exists();
     }
 
     /**

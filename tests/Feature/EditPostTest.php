@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\PostStatus;
 use App\Enums\TargetStatus;
 use App\Jobs\PublishPostTarget;
+use App\Jobs\UpdateLivePost;
 use App\Models\Post;
 use App\Models\PostTarget;
 use App\Models\SocialAccount;
@@ -123,15 +124,46 @@ class EditPostTest extends TestCase
             ->assertSessionHasErrors('accounts');
     }
 
-    public function test_published_or_busy_posts_cannot_be_edited(): void
+    public function test_busy_posts_cannot_be_edited(): void
     {
-        $published = Post::factory()->create(['status' => PostStatus::Published]);
-        $busy = Post::factory()->for($published->user)->create(['status' => PostStatus::Publishing]);
+        $busy = Post::factory()->create(['status' => PostStatus::Publishing]);
 
-        $this->actingAs($published->user)->get(route('posts.edit', $published))->assertRedirect(route('posts.show', $published));
-        $this->actingAs($published->user)->put(route('posts.update', $busy), ['caption' => 'x', 'when' => 'keep'])->assertSessionHas('error');
+        $this->actingAs($busy->user)->get(route('posts.edit', $busy))->assertRedirect(route('posts.show', $busy));
+        $this->actingAs($busy->user)->put(route('posts.update', $busy), ['caption' => 'x', 'when' => 'keep'])->assertSessionHas('error');
 
         $this->assertNotSame('x', $busy->fresh()->caption);
+    }
+
+    public function test_published_post_edit_updates_live_facebook_and_youtube_posts_only(): void
+    {
+        $user = User::factory()->create();
+        $post = Post::factory()->for($user)->create(['status' => PostStatus::Published, 'caption' => 'Old']);
+        $targets = [];
+        foreach (['facebook', 'youtube', 'instagram', 'tiktok'] as $platform) {
+            $account = SocialAccount::factory()->for($user)->{$platform}()->create();
+            $targets[$platform] = PostTarget::factory()->forPostAndAccount($post, $account)->create(['status' => TargetStatus::Published, 'platform_post_id' => $platform.'-1']);
+        }
+
+        $this->actingAs($user)->get(route('posts.edit', $post))->assertOk()->assertSee('Already published posts are updated automatically');
+        $this->actingAs($user)->put(route('posts.update', $post), ['caption' => 'Corrected text', 'when' => 'keep'])
+            ->assertSessionHas('live_updates', 2);
+
+        $this->assertSame('Corrected text', $post->fresh()->caption);
+        $this->assertSame(PostStatus::Published, $post->fresh()->status);
+        Queue::assertPushed(UpdateLivePost::class, 2);
+        Queue::assertPushed(UpdateLivePost::class, fn (UpdateLivePost $job) => $job->target->is($targets['facebook']));
+        Queue::assertPushed(UpdateLivePost::class, fn (UpdateLivePost $job) => $job->target->is($targets['youtube']));
+    }
+
+    public function test_nothing_is_sent_when_the_text_did_not_change(): void
+    {
+        $page = SocialAccount::factory()->facebook()->create();
+        $post = Post::factory()->for($page->user)->create(['status' => PostStatus::Published, 'caption' => 'Same']);
+        PostTarget::factory()->forPostAndAccount($post, $page)->create(['status' => TargetStatus::Published, 'platform_post_id' => '1_2']);
+
+        $this->actingAs($post->user)->put(route('posts.update', $post), ['caption' => 'Same', 'when' => 'keep']);
+
+        Queue::assertNotPushed(UpdateLivePost::class);
     }
 
     public function test_past_schedule_time_is_rejected(): void
@@ -154,14 +186,14 @@ class EditPostTest extends TestCase
         $this->actingAs($intruder)->put(route('posts.update', $post), ['caption' => 'x', 'when' => 'keep'])->assertForbidden();
     }
 
-    public function test_edit_buttons_show_only_for_editable_posts(): void
+    public function test_edit_buttons_show_for_every_post_except_busy_ones(): void
     {
         $user = User::factory()->create();
-        $failed = Post::factory()->for($user)->create(['status' => PostStatus::Failed]);
         $published = Post::factory()->for($user)->create(['status' => PostStatus::Published]);
+        $busy = Post::factory()->for($user)->create(['status' => PostStatus::Publishing]);
 
-        $this->actingAs($user)->get(route('posts.show', $failed))->assertSee(route('posts.edit', $failed));
-        $this->actingAs($user)->get(route('posts.show', $published))->assertDontSee(route('posts.edit', $published));
-        $this->actingAs($user)->get(route('posts.index'))->assertSee(route('posts.edit', $failed))->assertDontSee(route('posts.edit', $published));
+        $this->actingAs($user)->get(route('posts.show', $published))->assertSee(route('posts.edit', $published));
+        $this->actingAs($user)->get(route('posts.show', $busy))->assertDontSee(route('posts.edit', $busy));
+        $this->actingAs($user)->get(route('posts.index'))->assertSee(route('posts.edit', $published))->assertDontSee(route('posts.edit', $busy));
     }
 }

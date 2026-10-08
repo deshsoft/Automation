@@ -8,6 +8,7 @@ use App\Enums\TargetStatus;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
 use App\Jobs\PrepareImportedVideo;
+use App\Jobs\UpdateLivePost;
 use App\Models\Post;
 use App\Models\PostTarget;
 use App\Models\VideoDownload;
@@ -171,7 +172,7 @@ class PostController extends Controller
         Gate::authorize('update', $post);
 
         if (! $post->isEditable()) {
-            return redirect()->route('posts.show', $post)->with('error', 'Only scheduled, cancelled or failed posts can be edited.');
+            return redirect()->route('posts.show', $post)->with('error', 'This post is being published right now. Edit it when it has finished.');
         }
 
         $post->load('targets.socialAccount');
@@ -190,7 +191,7 @@ class PostController extends Controller
     public function update(UpdatePostRequest $request, Post $post, PostDispatcher $dispatcher): RedirectResponse
     {
         if (! $post->isEditable()) {
-            return redirect()->route('posts.show', $post)->with('error', 'Only scheduled, cancelled or failed posts can be edited.');
+            return redirect()->route('posts.show', $post)->with('error', 'This post is being published right now. Edit it when it has finished.');
         }
 
         $files = $request->mediaFiles();
@@ -217,6 +218,7 @@ class PostController extends Controller
             unset($options['youtube_video_path']);
         }
 
+        $textBefore = $this->liveText($post);
         $attributes = ['title' => $request->input('title'), 'caption' => $request->input('caption')];
 
         if ($files !== []) {
@@ -248,7 +250,44 @@ class PostController extends Controller
             }
         }
 
-        return $this->applyTiming($request, $post->fresh(), $dispatcher);
+        $post = $post->fresh();
+        $liveUpdates = $textBefore !== $this->liveText($post) ? $this->updateLivePosts($post) : 0;
+
+        return $this->applyTiming($request, $post, $dispatcher)
+            ->with('live_updates', $liveUpdates);
+    }
+
+    /**
+     * The parts of a post that published Facebook/YouTube posts can be updated with.
+     *
+     * @return array<string, mixed>
+     */
+    private function liveText(Post $post): array
+    {
+        return [
+            $post->caption,
+            $post->title,
+            $post->option('captions', []),
+            $post->option('youtube.tags', []),
+            $post->option('youtube.privacy'),
+        ];
+    }
+
+    /**
+     * Send the edited text to the posts that are already on Facebook and YouTube.
+     */
+    private function updateLivePosts(Post $post): int
+    {
+        $targets = $post->targets()
+            ->with('socialAccount')
+            ->where('status', TargetStatus::Published)
+            ->whereNotNull('platform_post_id')
+            ->get()
+            ->filter(fn (PostTarget $target) => in_array($target->socialAccount->platform, UpdateLivePost::EDITABLE_PLATFORMS, true) && ! $target->isShare());
+
+        $targets->each(fn (PostTarget $target) => UpdateLivePost::dispatch($target));
+
+        return $targets->count();
     }
 
     private function applyTiming(UpdatePostRequest $request, Post $post, PostDispatcher $dispatcher): RedirectResponse

@@ -148,6 +148,27 @@ class FacebookPublisher implements Publisher
     /**
      * Ask Facebook for the public link of a post. Falls back to a constructed link.
      */
+    /**
+     * Change the text of a post that is already on the Page.
+     *
+     * @throws PublishingException
+     */
+    public function updateLive(PostTarget $target): void
+    {
+        $post = $target->post;
+        $account = $target->socialAccount;
+
+        // Videos keep their text in "description"; other posts in "message".
+        $field = $post->isVideo() && blank($post->option('link')) ? 'description' : 'message';
+
+        $response = Http::asForm()->connectTimeout(10)->timeout(60)->post($this->url((string) $target->platform_post_id), [
+            $field => $post->captionFor(Platform::Facebook),
+            'access_token' => $account->access_token,
+        ]);
+
+        PublishingException::throwUnlessSuccessful($response, 'Facebook edit');
+    }
+
     private function permalink(string $postId, SocialAccount $account): string
     {
         $fallback = 'https://www.facebook.com/'.$postId;

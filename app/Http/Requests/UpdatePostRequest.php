@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\Platform;
+use App\Enums\TargetStatus;
 use App\Models\Post;
 use App\Models\VideoDownload;
 use Closure;
@@ -137,9 +138,10 @@ class UpdatePostRequest extends FormRequest
      */
     private function platforms(Post $post): Collection
     {
+        // Accounts that already have the post only get a text update, so their media rules do not apply.
         $accountIds = $this->has('accounts')
             ? array_filter((array) $this->input('accounts'), 'is_numeric')
-            : $post->targets()->pluck('social_account_id')->all();
+            : $post->targets()->whereNotIn('status', [TargetStatus::Published, TargetStatus::Manual])->pluck('social_account_id')->all();
 
         return $this->user()->socialAccounts()->whereIn('id', $accountIds)->pluck('platform')->unique()->values();
     }

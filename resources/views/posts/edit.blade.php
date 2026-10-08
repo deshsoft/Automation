@@ -2,6 +2,7 @@
     @php($isFailed = in_array($post->status, [\App\Enums\PostStatus::Failed, \App\Enums\PostStatus::PartiallyFailed], true))
     @php($defaultWhen = $post->status === \App\Enums\PostStatus::Scheduled ? 'schedule' : ($isFailed ? 'now' : 'keep'))
     @php($localSchedule = $post->scheduled_at?->timezone(config('app.display_timezone'))->format('Y-m-d\TH:i'))
+    @php($isPublished = $post->status === \App\Enums\PostStatus::Published)
 
     <form method="POST" action="{{ route('posts.update', $post) }}" enctype="multipart/form-data" class="space-y-5">
         @csrf
@@ -19,6 +20,13 @@
                         <li>{{ $error }}</li>
                     @endforeach
                 </ul>
+            </div>
+        @endif
+
+        @if ($post->hasPublishedTargets())
+            <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                <strong>Already published posts are updated automatically:</strong> on <strong>Facebook</strong> the text, and on <strong>YouTube</strong> the title, description, tags and visibility.
+                Instagram and TikTok do not allow editing after posting, so they keep the old text.
             </div>
         @endif
 
@@ -50,8 +58,8 @@
             @endif
         </section>
 
-        {{-- Media --}}
-        <section class="rounded-lg border border-gray-200 bg-white p-5">
+        {{-- Media (cannot change once the post is published everywhere) --}}
+        <section @class(['rounded-lg border border-gray-200 bg-white p-5', 'hidden' => $isPublished])>
             <h2 class="mb-3 font-semibold">Photo or video</h2>
             @if ($post->hasMedia())
                 <div class="mb-3 flex flex-wrap gap-2">
@@ -139,7 +147,10 @@
         </section>
 
         {{-- When --}}
-        <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-5">
+        @if ($isPublished)
+            <input type="hidden" name="when" value="keep">
+        @endif
+        <section @class(['space-y-3 rounded-lg border border-gray-200 bg-white p-5', 'hidden' => $isPublished])>
             <h2 class="font-semibold">After saving</h2>
             @foreach ([
                 'now' => $isFailed ? '🔁 Retry the failed accounts now' : '🚀 Publish now',
@@ -147,7 +158,7 @@
                 'keep' => '💾 Only save (do not publish)',
             ] as $value => $label)
                 <label class="flex items-center gap-2 text-sm">
-                    <input type="radio" name="when" value="{{ $value }}" data-edit-when @checked(old('when', $defaultWhen) === $value)> {{ $label }}
+                    <input type="radio" name="when" value="{{ $value }}" data-edit-when @checked(old('when', $defaultWhen) === $value) @disabled($isPublished)> {{ $label }}
                 </label>
             @endforeach
             <div data-edit-schedule @class(['hidden' => old('when', $defaultWhen) !== 'schedule'])>
