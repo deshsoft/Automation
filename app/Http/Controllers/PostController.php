@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use ZipArchive;
@@ -114,6 +115,7 @@ class PostController extends Controller
                 ],
                 'share_from_account_id' => $request->usesShareMode() ? (int) $request->input('share_from_account_id') : null,
                 'stagger_seconds' => (int) $request->input('stagger_seconds', 0),
+                'fingerprint' => $request->fingerprint(),
                 'status' => match (true) {
                     $request->filled('import_url') => PostStatus::Preparing,
                     $scheduledAt !== null => PostStatus::Scheduled,
@@ -280,6 +282,48 @@ class PostController extends Controller
     }
 
     /**
+     * Turn YouTube "photo post" items (which need a manual click) into
+     * automatic Shorts or regular videos made from the photos.
+     */
+    public function youtubeAsVideo(Request $request, Post $post, PostDispatcher $dispatcher): RedirectResponse
+    {
+        Gate::authorize('update', $post);
+
+        $format = $request->validate(['format' => ['required', Rule::in(['shorts', 'video'])]])['format'];
+        $manualTargets = $post->targets()->where('status', TargetStatus::Manual);
+
+        if (! $manualTargets->exists()) {
+            return back()->with('error', 'There is nothing waiting to be posted on YouTube.');
+        }
+
+        $options = $post->options ?? [];
+        $options['youtube'] = [...($options['youtube'] ?? []), 'format' => $format];
+        unset($options['youtube_video_path']);
+
+        $manualTargets->update(['status' => TargetStatus::Pending, 'error' => null]);
+        $post->update(['options' => $options, 'status' => PostStatus::Publishing]);
+        $dispatcher->dispatch($post);
+
+        return back()->with('success', 'Making the '.($format === 'shorts' ? 'Shorts' : 'video').' from the photos and uploading it to YouTube automatically.');
+    }
+
+    /**
+     * Stop a scheduled post from going out, but keep it (it can be edited and scheduled again).
+     */
+    public function cancel(Post $post): RedirectResponse
+    {
+        Gate::authorize('update', $post);
+
+        if ($post->status !== PostStatus::Scheduled) {
+            return back()->with('error', 'Only scheduled posts can be cancelled.');
+        }
+
+        $post->update(['status' => PostStatus::Cancelled]);
+
+        return back()->with('success', 'Scheduled post cancelled. You can edit and schedule it again.');
+    }
+
+    /**
      * All photos of a post as one ZIP, for posting them by hand (YouTube photo posts).
      */
     public function downloadPhotos(Post $post): BinaryFileResponse|RedirectResponse
@@ -355,38 +399,21 @@ class PostController extends Controller
             'posts.*' => ['integer'],
         ], ['posts.required' => 'Select at least one post.']);
 
-        $deleted = 0;
-        $skipped = 0;
+        $posts = $request->user()->posts()->whereIn('id', $validated['posts'])->get();
 
-        $request->user()->posts()->whereIn('id', $validated['posts'])->get()->each(function (Post $post) use (&$deleted, &$skipped) {
-            if ($post->isBusy()) {
-                $skipped++;
-
-                return;
-            }
-
+        $posts->each(function (Post $post) {
             $post->deleteMediaFiles();
             $post->delete();
-            $deleted++;
         });
 
-        return back()->with('success', "Deleted {$deleted} post(s).".($skipped > 0 ? " Skipped {$skipped} that are publishing right now." : ''));
+        return back()->with('success', "Deleted {$posts->count()} post(s).");
     }
 
     public function destroy(Post $post): RedirectResponse
     {
         Gate::authorize('delete', $post);
 
-        if ($post->status === PostStatus::Scheduled) {
-            $post->update(['status' => PostStatus::Cancelled]);
-
-            return back()->with('success', 'Scheduled post cancelled.');
-        }
-
-        if ($post->isBusy()) {
-            return back()->with('error', 'This post is publishing right now. Wait until it finishes.');
-        }
-
+        // Any time, even while publishing: queued work for a deleted post is dropped.
         $post->deleteMediaFiles();
         $post->delete();
 

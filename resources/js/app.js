@@ -1,5 +1,76 @@
 const PLATFORM_LABELS = { facebook: 'Facebook', instagram: 'Instagram', youtube: 'YouTube', tiktok: 'TikTok' };
 
+// --- iPhone HEIC photos ------------------------------------------------------
+// No social network accepts HEIC, so iPhone photos are turned into JPG in the
+// browser before upload. The converter is only downloaded when it is needed.
+
+function isHeic(file) {
+    return ['image/heic', 'image/heif'].includes(file.type) || /\.(heic|heif)$/i.test(file.name);
+}
+
+async function convertHeicFiles(files) {
+    if (!files.some(isHeic)) {
+        return files;
+    }
+
+    const { default: heic2any } = await import('heic2any');
+
+    return Promise.all(
+        files.map(async (file) => {
+            if (!isHeic(file)) {
+                return file;
+            }
+
+            const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+            const blob = Array.isArray(result) ? result[0] : result;
+
+            return new File([blob], `${file.name.replace(/\.(heic|heif)$/i, '')}.jpg`, {
+                type: 'image/jpeg',
+                lastModified: file.lastModified,
+            });
+        }),
+    );
+}
+
+/**
+ * Replace any HEIC files in a file input with JPG copies. While converting,
+ * the form cannot be submitted and a short message is shown under the input.
+ */
+async function convertHeicInput(input, files = [...input.files]) {
+    if (!files.some(isHeic)) {
+        return files;
+    }
+
+    const status = document.createElement('p');
+    status.className = 'mt-1 text-xs font-medium text-indigo-600';
+    status.textContent = 'Converting iPhone photo(s) to JPG…';
+    input.closest('label, div')?.after(status);
+    const buttons = [...(input.form?.querySelectorAll('button') ?? [])];
+    buttons.forEach((button) => (button.disabled = true));
+
+    try {
+        const converted = await convertHeicFiles(files);
+        const transfer = new DataTransfer();
+        converted.forEach((file) => transfer.items.add(file));
+        input.files = transfer.files;
+        status.remove();
+
+        return converted;
+    } catch {
+        input.value = '';
+        status.className = 'mt-1 text-xs font-medium text-red-600';
+        status.textContent = 'This iPhone photo could not be converted. Please export it as JPG and try again.';
+
+        return [];
+    } finally {
+        buttons.forEach((button) => (button.disabled = false));
+    }
+}
+
+document.querySelectorAll('[data-heic-convert]').forEach((input) => {
+    input.addEventListener('change', () => convertHeicInput(input));
+});
+
 const composer = document.querySelector('[data-composer]');
 
 if (composer) {
@@ -260,7 +331,10 @@ function setUpComposer(form) {
         }
     }
 
-    thumbnailInput.addEventListener('change', () => showThumbnail(thumbnailInput.files[0]));
+    thumbnailInput.addEventListener('change', async () => {
+        await convertHeicInput(thumbnailInput);
+        showThumbnail(thumbnailInput.files[0]);
+    });
 
     function mediaElement(withControls, className) {
         const element = document.createElement(mediaKind === 'video' ? 'video' : 'img');
@@ -303,7 +377,10 @@ function setUpComposer(form) {
         warning.classList.toggle('hidden', messages.length === 0);
     }
 
-    mediaInput.addEventListener('change', () => showMedia(mediaInput.files[0]));
+    mediaInput.addEventListener('change', async () => {
+        await convertHeicInput(mediaInput);
+        showMedia(mediaInput.files[0]);
+    });
 
     form.querySelector('[data-media-remove]').addEventListener('click', () => {
         mediaInput.value = '';
@@ -328,7 +405,7 @@ function setUpComposer(form) {
         const transfer = new DataTransfer();
         dropped.forEach((item) => transfer.items.add(item));
         mediaInput.files = transfer.files;
-        showMedia(dropped[0]);
+        convertHeicInput(mediaInput, dropped).then((files) => showMedia(files[0] ?? null));
     });
 
     // --- Preview ------------------------------------------------------------

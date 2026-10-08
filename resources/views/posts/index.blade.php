@@ -75,7 +75,7 @@
                             <tr class="hover:bg-slate-50">
                                 <td class="py-3 pl-4 sm:pl-5">
                                     <input type="checkbox" name="posts[]" value="{{ $post->id }}" form="bulk-delete" data-bulk-item class="rounded"
-                                           aria-label="Select post {{ $post->id }}" @disabled($post->isBusy())>
+                                           aria-label="Select post {{ $post->id }}">
                                 </td>
                                 <td class="w-full max-w-0 px-3 py-3 sm:w-auto sm:max-w-none sm:px-5">
                                     <a href="{{ route('posts.show', $post) }}" class="flex items-center gap-3 sm:max-w-xs xl:max-w-sm">
@@ -132,16 +132,14 @@
                                             <x-icon name="create" class="size-4" />
                                         </a>
                                     @endif
-                                    @unless ($post->isBusy())
                                         <form method="POST" action="{{ route('posts.bulk-destroy') }}"
-                                              data-confirm="Delete this post from the app? It stays on the social networks." onsubmit="return confirm(this.dataset.confirm)">
+                                              data-confirm="{{ $post->isBusy() ? 'This post is being published right now. Delete it and stop the rest?' : 'Delete this post from the app? It stays on the social networks.' }}" onsubmit="return confirm(this.dataset.confirm)">
                                             @csrf
                                             <input type="hidden" name="posts[]" value="{{ $post->id }}">
                                             <button class="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Delete" aria-label="Delete post {{ $post->id }}">
                                                 <x-icon name="trash" class="size-4" />
                                             </button>
                                         </form>
-                                    @endunless
                                     </div>
                                 </td>
                             </tr>

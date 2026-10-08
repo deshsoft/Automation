@@ -24,6 +24,11 @@ class PublishPostTarget implements ShouldQueue
     use Queueable;
 
     /**
+     * The post may be deleted while this job waits in the queue; then drop the job.
+     */
+    public bool $deleteWhenMissingModels = true;
+
+    /**
      * Large YouTube uploads can take several minutes.
      */
     public int $timeout = 900;

@@ -67,7 +67,7 @@
                 <p class="mb-3 text-sm text-gray-600">Taken from a link: <span class="break-all text-indigo-600">{{ $post->option('import_url') }}</span></p>
             @endif
             <label for="media" class="mb-1 block text-sm font-medium">Replace with new files <span class="font-normal text-gray-500">(optional)</span></label>
-            <input id="media" name="media[]" type="file" multiple accept="image/jpeg,image/png,video/mp4,video/quicktime"
+            <input id="media" name="media[]" type="file" multiple accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,video/mp4,video/quicktime" data-heic-convert
                    class="block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-indigo-700">
             <p class="mt-1 text-xs text-gray-500">One video, or up to 10 photos. Leave empty to keep the current ones.</p>
         </section>

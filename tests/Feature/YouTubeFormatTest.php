@@ -154,4 +154,30 @@ class YouTubeFormatTest extends TestCase
 
         return [$post, PostTarget::factory()->forPostAndAccount($post, $channel)->create()];
     }
+
+    public function test_waiting_photo_posts_can_switch_to_automatic_shorts(): void
+    {
+        Queue::fake();
+        [$post, $target] = $this->youtubePhotoPost('post');
+        $target->update(['status' => TargetStatus::Manual]);
+        $post->update(['status' => PostStatus::Published]);
+
+        $this->actingAs($post->user)->get(route('posts.show', $post))->assertSee('Upload as Shorts');
+
+        $this->actingAs($post->user)->post(route('posts.youtube-video', $post), ['format' => 'shorts'])->assertSessionHas('success');
+
+        $this->assertSame('shorts', $post->fresh()->option('youtube.format'));
+        $this->assertSame(TargetStatus::Pending, $target->fresh()->status);
+        $this->assertSame(PostStatus::Publishing, $post->fresh()->status);
+        Queue::assertPushed(PublishPostTarget::class, fn (PublishPostTarget $job) => $job->target->is($target));
+    }
+
+    public function test_switching_needs_waiting_items_and_a_valid_format(): void
+    {
+        [$post] = $this->youtubePhotoPost('post');
+
+        $this->actingAs($post->user)->post(route('posts.youtube-video', $post), ['format' => 'shorts'])->assertSessionHas('error');
+        $this->actingAs($post->user)->post(route('posts.youtube-video', $post), ['format' => 'post'])->assertSessionHasErrors('format');
+        $this->actingAs(User::factory()->create())->post(route('posts.youtube-video', $post), ['format' => 'shorts'])->assertForbidden();
+    }
 }

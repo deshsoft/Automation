@@ -132,7 +132,7 @@ class ImportVideoPostTest extends TestCase
         $this->assertStringContainsString('This video is private.', $target->error);
     }
 
-    public function test_downloading_post_page_refreshes_and_cannot_be_deleted(): void
+    public function test_downloading_post_page_refreshes_and_can_still_be_deleted(): void
     {
         $post = $this->preparingPost();
 
@@ -140,8 +140,8 @@ class ImportVideoPostTest extends TestCase
             ->assertSee('Downloading the video')
             ->assertSee('http-equiv="refresh"', false);
 
-        $this->actingAs($post->user)->delete(route('posts.destroy', $post))->assertSessionHas('error');
-        $this->assertModelExists($post);
+        $this->actingAs($post->user)->delete(route('posts.destroy', $post))->assertRedirect(route('posts.index'));
+        $this->assertModelMissing($post);
     }
 
     public function test_imported_downloads_are_not_listed_on_the_download_page(): void

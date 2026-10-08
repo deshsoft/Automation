@@ -22,14 +22,18 @@
                     <button class="rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600">Retry failed</button>
                 </form>
             @endif
-            @if (! $post->isBusy())
-                <form method="POST" action="{{ route('posts.destroy', $post) }}" data-confirm="{{ $post->status === \App\Enums\PostStatus::Scheduled ? 'Cancel this scheduled post?' : 'Delete this post from the dashboard? (It stays on the social networks.)' }}" onsubmit="return confirm(this.dataset.confirm)">
-                    @csrf @method('DELETE')
-                    <button class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                        {{ $post->status === \App\Enums\PostStatus::Scheduled ? 'Cancel' : 'Delete' }}
-                    </button>
+            @if ($post->status === \App\Enums\PostStatus::Scheduled)
+                <form method="POST" action="{{ route('posts.cancel', $post) }}" data-confirm="Cancel this scheduled post? You can edit and schedule it again later." onsubmit="return confirm(this.dataset.confirm)">
+                    @csrf
+                    <button class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel schedule</button>
                 </form>
             @endif
+            <form method="POST" action="{{ route('posts.destroy', $post) }}"
+                  data-confirm="{{ $post->isBusy() ? 'This post is being published right now. Delete it and stop the rest? Accounts that already got it keep it.' : 'Delete this post from the app? It stays on the social networks.' }}"
+                  onsubmit="return confirm(this.dataset.confirm)">
+                @csrf @method('DELETE')
+                <button class="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">🗑️ Delete</button>
+            </form>
         </div>
     </div>
 
@@ -152,7 +156,20 @@
                                 @if ($target->status === \App\Enums\TargetStatus::Manual)
                                     {{-- YouTube photo posts have no API: everything ready to post by hand --}}
                                     <div class="mt-2 space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-                                        <div class="font-semibold">Post it on YouTube in 3 steps:</div>
+                                        <div class="rounded-md bg-white p-2 ring-1 ring-sky-200">
+                                            <div class="mb-1.5 font-semibold text-slate-800">⚡ Want it fully automatic?</div>
+                                            <div class="flex flex-wrap gap-2">
+                                                @foreach (['shorts' => '📱 Upload as Shorts', 'video' => '🖥️ Upload as regular video'] as $format => $label)
+                                                    <form method="POST" action="{{ route('posts.youtube-video', $post) }}">
+                                                        @csrf
+                                                        <input type="hidden" name="format" value="{{ $format }}">
+                                                        <button class="rounded-md bg-indigo-600 px-2.5 py-1.5 font-medium text-white hover:bg-indigo-700">{{ $label }}</button>
+                                                    </form>
+                                                @endforeach
+                                            </div>
+                                            <div class="mt-1 text-slate-500">A slideshow video is made from the photos and uploaded to every YouTube channel here.</div>
+                                        </div>
+                                        <div class="font-semibold">Or post the photos yourself in 3 steps (YouTube has no API for photo posts):</div>
                                         <div class="flex flex-wrap gap-2">
                                             <a href="{{ route('posts.photos', $post) }}" class="rounded-md bg-white px-2.5 py-1.5 font-medium shadow-sm ring-1 ring-sky-200 hover:bg-sky-100">1. ⬇️ Download photos ({{ count($post->photoPaths()) }})</a>
                                             <button type="button" data-copy="{{ $post->captionFor($target->socialAccount->platform) }}" class="rounded-md bg-white px-2.5 py-1.5 font-medium shadow-sm ring-1 ring-sky-200 hover:bg-sky-100">2. 📋 Copy caption</button>

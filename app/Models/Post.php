@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Storage;
     'share_from_account_id',
     'video_download_id',
     'stagger_seconds',
+    'fingerprint',
     'status',
     'scheduled_at',
     'published_at',

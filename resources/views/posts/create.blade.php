@@ -107,8 +107,8 @@
                     <label data-dropzone class="relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40">
                         <svg class="size-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/></svg>
                         <span class="text-sm font-medium text-indigo-600">Click to choose, or drag files here</span>
-                        <span class="text-xs text-gray-500">One MP4/MOV video, or up to 10 JPG/PNG photos (posted as an album / carousel) · max {{ config('filesystems.max_upload_mb') }} MB</span>
-                        <input id="media" name="media[]" type="file" multiple accept="image/jpeg,image/png,video/mp4,video/quicktime" class="sr-only" data-media-input>
+                        <span class="text-xs text-gray-500">One MP4/MOV video, or up to 10 JPG/PNG/iPhone (HEIC) photos (posted as an album / carousel) · max {{ config('filesystems.max_upload_mb') }} MB</span>
+                        <input id="media" name="media[]" type="file" multiple accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,video/mp4,video/quicktime" class="sr-only" data-media-input>
                     </label>
 
                     <div data-media-selected class="mt-3 hidden items-center gap-3 rounded-md bg-gray-50 p-2">
@@ -125,7 +125,7 @@
                         <label for="thumbnail" class="mb-1 block text-sm font-medium">Thumbnail <span class="font-normal text-gray-500">(optional cover image for the video)</span></label>
                         <div class="flex items-center gap-3">
                             <img data-thumbnail-preview alt="" class="hidden h-16 w-28 shrink-0 rounded object-cover">
-                            <input id="thumbnail" name="thumbnail" type="file" accept="image/jpeg,image/png,image/webp" data-thumbnail-input
+                            <input id="thumbnail" name="thumbnail" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" data-thumbnail-input
                                    class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100">
                         </div>
                         <p class="mt-1 text-xs text-gray-500">
@@ -237,7 +237,7 @@
                             @foreach ([
                                 'shorts' => ['📱 Shorts', 'Vertical slideshow video (9:16)', 'Automatic'],
                                 'video' => ['🖥️ Regular video', 'Horizontal slideshow (16:9)', 'Automatic'],
-                                'post' => ['🖼️ Photo post', 'A Community post with the photos', 'You click "Post" (YouTube has no API)'],
+                                'post' => ['🖼️ Photo post', 'A Community post with the photos', '⚠️ Not automatic: you click "Post" yourself (YouTube has no API)'],
                             ] as $format => [$label, $hint, $note])
                                 <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50 has-checked:border-indigo-400 has-checked:bg-indigo-50">
                                     <input type="radio" name="youtube_format" value="{{ $format }}" class="mt-1" @checked(old('youtube_format', 'shorts') === $format)>
@@ -319,6 +319,13 @@
                         <p class="mt-1 text-xs text-gray-500">Posting to many Pages at the exact same moment can look like spam to Facebook. A small gap is safer.</p>
                     </div>
                 </section>
+
+                @error('duplicate')
+                    <label class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <input type="checkbox" name="allow_duplicate" value="1" class="mt-0.5 rounded">
+                        <span><strong>Post it again anyway.</strong> I know it is the same as a recent post.</span>
+                    </label>
+                @enderror
 
                 <div class="flex items-center gap-4">
                     <button data-submit class="rounded-md bg-indigo-600 px-6 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-60">Publish</button>

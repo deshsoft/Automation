@@ -99,22 +99,36 @@ class PostManagementTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_deleting_a_scheduled_post_cancels_it(): void
+    public function test_deleting_a_scheduled_post_deletes_it(): void
     {
         $post = Post::factory()->scheduled()->create();
 
-        $this->actingAs($post->user)->delete(route('posts.destroy', $post));
+        $this->actingAs($post->user)->delete(route('posts.destroy', $post))->assertRedirect(route('posts.index'));
+
+        $this->assertModelMissing($post);
+    }
+
+    public function test_scheduled_post_can_be_cancelled_and_kept(): void
+    {
+        $post = Post::factory()->scheduled()->create();
+
+        $this->actingAs($post->user)->post(route('posts.cancel', $post))->assertSessionHas('success');
 
         $this->assertSame(PostStatus::Cancelled, $post->fresh()->status);
     }
 
-    public function test_publishing_post_cannot_be_deleted(): void
+    public function test_post_can_be_deleted_even_while_publishing(): void
     {
         $post = Post::factory()->create(['status' => PostStatus::Publishing]);
 
-        $this->actingAs($post->user)->delete(route('posts.destroy', $post))->assertSessionHas('error');
+        $this->actingAs($post->user)->delete(route('posts.destroy', $post))->assertRedirect(route('posts.index'));
 
-        $this->assertModelExists($post);
+        $this->assertModelMissing($post);
+    }
+
+    public function test_queued_jobs_of_a_deleted_post_are_dropped(): void
+    {
+        $this->assertTrue((new PublishPostTarget(PostTarget::factory()->create()))->deleteWhenMissingModels);
     }
 
     public function test_finished_post_can_be_deleted(): void
@@ -199,11 +213,11 @@ class PostManagementTest extends TestCase
         $someoneElses = Post::factory()->create(['status' => PostStatus::Published]);
 
         $this->actingAs($user)->post(route('posts.bulk-destroy'), ['posts' => [$first->id, $second->id, $busy->id, $someoneElses->id]])
-            ->assertSessionHas('success', 'Deleted 2 post(s). Skipped 1 that are publishing right now.');
+            ->assertSessionHas('success', 'Deleted 3 post(s).');
 
         $this->assertModelMissing($first);
         $this->assertModelMissing($second);
-        $this->assertModelExists($busy);
+        $this->assertModelMissing($busy);
         $this->assertModelExists($someoneElses);
     }
 

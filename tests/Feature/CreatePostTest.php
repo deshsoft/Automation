@@ -497,4 +497,53 @@ class CreatePostTest extends TestCase
             'stagger_seconds' => 0,
         ])->assertSessionHasErrors('music_url');
     }
+
+    public function test_the_same_post_twice_within_a_day_is_stopped(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+        $form = ['accounts' => [$page->id], 'caption' => 'Rally at 5 PM', 'stagger_seconds' => 0];
+
+        $this->actingAs($this->user)->post(route('posts.store'), $form)->assertSessionHasNoErrors();
+        $this->actingAs($this->user)->post(route('posts.store'), $form)->assertSessionHasErrors('duplicate');
+
+        $this->assertStringStartsWith('This is the same as post #'.Post::sole()->id.',', session('errors')->first('duplicate'));
+
+        $this->assertDatabaseCount('posts', 1);
+    }
+
+    public function test_the_same_post_can_be_posted_again_on_purpose(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+        $form = ['accounts' => [$page->id], 'caption' => 'Rally at 5 PM', 'stagger_seconds' => 0];
+
+        $this->actingAs($this->user)->post(route('posts.store'), $form);
+        $this->actingAs($this->user)->post(route('posts.store'), [...$form, 'allow_duplicate' => '1'])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('posts', 2);
+    }
+
+    public function test_same_text_to_other_accounts_or_with_other_media_is_not_a_duplicate(): void
+    {
+        [$first, $second] = SocialAccount::factory()->for($this->user)->facebook()->count(2)->create()->all();
+
+        $this->actingAs($this->user)->post(route('posts.store'), ['accounts' => [$first->id], 'caption' => 'Same text', 'stagger_seconds' => 0]);
+        $this->actingAs($this->user)->post(route('posts.store'), ['accounts' => [$second->id], 'caption' => 'Same text', 'stagger_seconds' => 0])->assertSessionHasNoErrors();
+        $this->actingAs($this->user)->post(route('posts.store'), [
+            'accounts' => [$first->id], 'caption' => 'Same text', 'media' => UploadedFile::fake()->image('new.jpg'), 'stagger_seconds' => 0,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('posts', 3);
+    }
+
+    public function test_the_same_post_is_allowed_again_after_a_day(): void
+    {
+        $page = SocialAccount::factory()->for($this->user)->facebook()->create();
+        $form = ['accounts' => [$page->id], 'caption' => 'Weekly message', 'stagger_seconds' => 0];
+
+        $this->actingAs($this->user)->post(route('posts.store'), $form);
+        $this->travel(25)->hours();
+
+        $this->actingAs($this->user)->post(route('posts.store'), $form)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('posts', 2);
+    }
 }

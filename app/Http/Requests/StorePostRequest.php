@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\Platform;
+use App\Models\Post;
 use App\Models\SocialAccount;
 use App\Models\VideoDownload;
 use Closure;
@@ -99,6 +100,7 @@ class StorePostRequest extends FormRequest
             'link' => ['nullable', 'url:http,https', 'max:2000'],
             'source_url' => ['nullable', 'url:http,https', 'max:2048'],
             'facebook_link_mode' => ['nullable', Rule::in(['share', 'upload'])],
+            'allow_duplicate' => ['nullable', 'boolean'],
             'import_url' => [
                 'nullable',
                 'url:http,https',
@@ -254,6 +256,11 @@ class StorePostRequest extends FormRequest
                     }
                 }
 
+                if (! $this->boolean('allow_duplicate') && ($duplicate = $this->recentDuplicate()) !== null) {
+                    $validator->errors()->add('duplicate', "This is the same as post #{$duplicate->id}, created {$duplicate->created_at->diffForHumans()} (same text, media and accounts). "
+                        .'Tick "Post it again anyway" below to post it again (choose the photo/video again).');
+                }
+
                 if ($this->filled('scheduled_at')) {
                     $scheduledAt = Carbon::parse($this->input('scheduled_at'), config('app.display_timezone'));
 
@@ -301,6 +308,35 @@ class StorePostRequest extends FormRequest
                 'allow_stitch' => $this->boolean('tiktok_allow_stitch'),
             ],
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
+    }
+
+    /**
+     * Identifies the content of this post, to catch the same post being
+     * created twice (double click, or posting it again by mistake).
+     */
+    public function fingerprint(): string
+    {
+        $accounts = array_map('intval', (array) $this->input('accounts', []));
+        sort($accounts);
+
+        return sha1((string) json_encode([
+            trim((string) $this->input('caption')),
+            collect($this->input('captions', []))->map(fn ($caption) => trim((string) $caption))->filter()->sortKeys()->all(),
+            trim((string) $this->input('title')),
+            $this->input('link'),
+            $this->input('import_url'),
+            $accounts,
+            array_map(fn (UploadedFile $file) => $file->getSize().':'.md5((string) file_get_contents($file->getRealPath(), length: 2 * 1024 * 1024)), $this->mediaFiles()),
+        ]));
+    }
+
+    private function recentDuplicate(): ?Post
+    {
+        return $this->user()->posts()
+            ->where('fingerprint', $this->fingerprint())
+            ->where('created_at', '>=', now()->subDay())
+            ->latest()
+            ->first();
     }
 
     public function usesShareMode(): bool
